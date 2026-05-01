@@ -1,0 +1,45 @@
+# Credenciais e segredos — NUNCA versionar
+.env
+.env.*
+config/client_secret.json
+config/google-ads.yaml
+config/google_credentials.txt
+memory/
+
+# Banco de dados local
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Ambiente virtual
+venv/
+.venv/
+env/
+
+# Arquivos gerados
+output/
+clients/
+
+# Logs
+logs/
+*.log
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Streamlit
+.streamlit/secrets.toml
