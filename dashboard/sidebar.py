@@ -27,11 +27,11 @@ def render_sidebar():
         # ── Logo ──────────────────────────────────────────────────────────────
         st.markdown(
             """
-            <div style='padding:24px 16px 16px;border-bottom:1px solid #1E293B;margin-bottom:16px'>
-              <div style='font-size:20px;font-weight:900;color:#FFFFFF;letter-spacing:-0.5px'>
-                Unbound<span style='color:#E53935'>Sales</span>
+            <div style='padding:22px 16px 16px;border-bottom:1px solid rgba(0,207,253,0.10);margin-bottom:12px'>
+              <div style='font-size:19px;font-weight:900;letter-spacing:-0.5px;line-height:1'>
+                <span style='color:#FFFFFF'>Unbound</span><span style='color:#00CFFD;text-shadow:0 0 12px rgba(0,207,253,0.5)'>Sales</span>
               </div>
-              <div style='font-size:10px;color:#334155;letter-spacing:2px;margin-top:2px;font-weight:600'>
+              <div style='font-size:9px;color:#1e3a4a;letter-spacing:2.5px;margin-top:4px;font-weight:700'>
                 PAINEL DE IA
               </div>
             </div>
@@ -108,13 +108,15 @@ def render_sidebar():
             info = " · ".join(filter(None, [seg, cid]))
             st.markdown(
                 f"""
-                <div style='margin-top:24px;padding:12px 14px;background:rgba(255,255,255,0.04);
-                            border:1px solid #1E293B;border-radius:10px'>
-                  <div style='font-size:12px;font-weight:700;color:#E2E8F0;
+                <div style='margin-top:20px;padding:11px 14px;
+                            background:rgba(0,207,253,0.05);
+                            border:1px solid rgba(0,207,253,0.18);
+                            border-radius:10px'>
+                  <div style='font-size:12px;font-weight:700;color:#e2e8f0;
                               white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>
                     {cliente_selecionado.nome}
                   </div>
-                  <div style='font-size:11px;color:#475569;margin-top:2px'>{info}</div>
+                  <div style='font-size:11px;color:#2a4a5c;margin-top:2px'>{info}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,

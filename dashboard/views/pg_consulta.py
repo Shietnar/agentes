@@ -17,24 +17,31 @@ from agents.consulta import AGENTES
 
 def _card(label: str, cor: str, texto: str):
     icone = label.split(" ")[0]
-    nome = label.split("—")[-1].strip() if "—" in label else label
+    nome  = label.split("—")[-1].strip() if "—" in label else label
+    # Cabeçalho com cor do agente
     st.markdown(
         f"""
-        <div style="
-            border-left: 4px solid {cor};
-            background: #fafafa;
-            border-radius: 0 8px 8px 0;
-            padding: 14px 18px;
-            margin-bottom: 14px;
-        ">
-          <div style="font-size:13px;font-weight:700;color:{cor};margin-bottom:8px">
+        <div style="border-left:3px solid {cor};border-radius:0 8px 8px 0;
+                    padding:12px 16px 0 16px;margin-bottom:2px;
+                    background:rgba(15,17,23,0.8);
+                    box-shadow:0 0 18px {cor}22">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;
+                       letter-spacing:1px;color:{cor};text-shadow:0 0 8px {cor}80">
             {icone} {nome}
-          </div>
-          <div style="font-size:14px;color:#212121;line-height:1.6;white-space:pre-wrap">{texto}</div>
+          </span>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    # Conteúdo renderizado como markdown (preserva formatação, listas, bold etc.)
+    with st.container():
+        st.markdown(
+            f"<div style='padding:12px 16px 16px 20px;background:rgba(15,17,23,0.8);"
+            f"border-left:3px solid {cor}40;border-radius:0 0 8px 0;margin-bottom:14px'>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(texto)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ─── RENDER PRINCIPAL ─────────────────────────────────────────────────────────
@@ -581,19 +588,49 @@ def _executar_e_exibir(agentes_keys, mensagem, chave_resultado, label_pergunta="
     from agents.consulta import consultar_agentes
 
     resultados = []
-    with st.status(f"Consultando {len(agentes_keys)} agente(s)...", expanded=True) as status:
-        def on_resp(key, label, texto):
-            nome = label.split("—")[-1].strip() if "—" in label else label
-            status.write(f"✅ {nome} respondeu")
-            resultados.append({"label": label, "cor": AGENTES[key]["cor"], "texto": texto})
+    placeholders = {}
 
-        try:
+    st.markdown(
+        "<div style='font-size:11px;font-weight:700;text-transform:uppercase;"
+        "letter-spacing:1px;color:#3d5166;margin-bottom:10px'>Consultando agentes</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Cria placeholder de status para cada agente
+    for k in agentes_keys:
+        info = AGENTES.get(k, {})
+        cor  = info.get("cor", "#00CFFD")
+        nome = info.get("label", k).split("—")[-1].strip()
+        ph   = st.empty()
+        ph.markdown(
+            f"<div style='display:flex;align-items:center;gap:8px;padding:8px 12px;"
+            f"background:rgba(0,207,253,0.04);border:1px solid rgba(0,207,253,0.10);"
+            f"border-radius:8px;margin-bottom:4px;font-size:13px;color:#3d5166'>"
+            f"<span style='width:8px;height:8px;border-radius:50%;background:#3d5166;"
+            f"display:inline-block'></span> {nome} — aguardando...</div>",
+            unsafe_allow_html=True,
+        )
+        placeholders[k] = (ph, cor, nome)
+
+    def on_resp(key, label, texto):
+        ph, cor, nome = placeholders.get(key, (None, "#00CFFD", label))
+        if ph:
+            ph.markdown(
+                f"<div style='display:flex;align-items:center;gap:8px;padding:8px 12px;"
+                f"background:rgba(0,230,160,0.06);border:1px solid rgba(0,230,160,0.20);"
+                f"border-radius:8px;margin-bottom:4px;font-size:13px;color:#00e6a0'>"
+                f"<span style='width:8px;height:8px;border-radius:50%;background:#00e6a0;"
+                f"box-shadow:0 0 6px #00e6a0;display:inline-block'></span> {nome} — respondeu ✓</div>",
+                unsafe_allow_html=True,
+            )
+        resultados.append({"label": label, "cor": AGENTES[key]["cor"], "texto": texto})
+
+    try:
+        with st.spinner(""):
             consultar_agentes(agentes_keys, mensagem, callback=on_resp)
-            status.update(label="Concluído!", state="complete")
-        except Exception as e:
-            status.update(label=f"Erro: {e}", state="error")
-            st.error(str(e))
-            return
+    except Exception as e:
+        st.error(f"Erro: {e}")
+        return
 
     st.session_state[chave_resultado] = {
         "resultados": resultados,
@@ -608,9 +645,27 @@ def _exibir_resultado(dados, chave):
         return
 
     st.divider()
-    with st.expander("Ver pergunta enviada", expanded=False):
-        st.code(dados.get("pergunta", ""), language=None)
 
+    # Pergunta resumida
+    pergunta = dados.get("pergunta", "")
+    if pergunta:
+        st.markdown(
+            f"<div style='font-size:11px;font-weight:700;text-transform:uppercase;"
+            f"letter-spacing:1px;color:#3d5166;margin-bottom:4px'>Pergunta</div>"
+            f"<div style='font-size:13px;color:#94a3b8;padding:10px 14px;"
+            f"background:#0f1117;border-left:2px solid rgba(0,207,253,0.3);"
+            f"border-radius:0 8px 8px 0;margin-bottom:18px'>{pergunta[:300]}"
+            f"{'...' if len(pergunta)>300 else ''}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Respostas dos agentes
+    st.markdown(
+        f"<div style='font-size:11px;font-weight:700;text-transform:uppercase;"
+        f"letter-spacing:1px;color:#3d5166;margin-bottom:10px'>"
+        f"Respostas — {len(resultados)} agente(s)</div>",
+        unsafe_allow_html=True,
+    )
     for r in resultados:
         _card(r["label"], r["cor"], r["texto"])
 
@@ -621,7 +676,7 @@ def _exibir_resultado(dados, chave):
             st.session_state.pop(f"{chave}_resultado", None)
             st.rerun()
     with col2:
-        texto = f"CONSULTA\n\nPERGUNTA:\n{dados.get('pergunta','')}\n\n{'─'*60}\n\n"
+        texto = f"CONSULTA\n\nPERGUNTA:\n{pergunta}\n\n{'─'*60}\n\n"
         texto += "\n\n".join(f"{r['label']}\n{'─'*40}\n{r['texto']}" for r in resultados)
         st.download_button(
             "⬇️ Exportar (.txt)",

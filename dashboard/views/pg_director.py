@@ -158,11 +158,13 @@ def _exibir():
     with col_parecer:
         st.markdown(section_title("Parecer do Diretor"), unsafe_allow_html=True)
         st.markdown(
-            f"<div style='background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;"
-            f"padding:28px 32px;line-height:1.75;color:#1E293B;font-size:14px'>"
-            f"{parecer.replace(chr(10), '<br>')}</div>",
+            "<div style='background:#0f1117;border:1px solid rgba(0,207,253,0.18);"
+            "border-top:2px solid #00CFFD;border-radius:0 12px 12px 12px;"
+            "padding:24px 28px;box-shadow:0 0 30px rgba(0,207,253,0.06)'>",
             unsafe_allow_html=True,
         )
+        st.markdown(parecer)
+        st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         st.download_button("⬇️  Baixar parecer", data=parecer,
                            file_name="parecer_diretor.txt", mime="text/plain")
@@ -181,48 +183,51 @@ def _exibir():
 
             if dados:
                 st.markdown(
-                    "<p style='font-size:11px;font-weight:600;color:#94A3B8;"
-                    "text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px'>"
+                    "<p style='font-size:10px;font-weight:700;color:#3d5166;"
+                    "text-transform:uppercase;letter-spacing:1px;margin-bottom:6px'>"
                     "Dados coletados</p>",
                     unsafe_allow_html=True,
                 )
                 for e in dados:
-                    cor = _COR.get(e["tool"], "#64748B")
+                    cor = _COR.get(e["tool"], "#3d5166")
                     st.markdown(
                         f"<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;"
-                        f"border-left:3px solid {cor};background:#F8FAFC;border-radius:0 6px 6px 0;"
-                        f"margin-bottom:4px;font-size:12px;color:#374151'>"
+                        f"border-left:2px solid {cor};background:#0f1117;"
+                        f"border-radius:0 6px 6px 0;margin-bottom:4px;"
+                        f"font-size:12px;color:#94a3b8'>"
                         f"{e['icone']} {e['label']}</div>",
                         unsafe_allow_html=True,
                     )
 
             if agentes:
                 st.markdown(
-                    "<p style='font-size:11px;font-weight:600;color:#94A3B8;"
-                    "text-transform:uppercase;letter-spacing:0.8px;margin:12px 0 6px'>"
-                    "Especialistas</p>",
+                    "<p style='font-size:10px;font-weight:700;color:#3d5166;"
+                    "text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px'>"
+                    "Especialistas consultados</p>",
                     unsafe_allow_html=True,
                 )
                 for e in agentes:
-                    cor = _COR.get(e["tool"], "#64748B")
+                    cor = _COR.get(e["tool"], "#00CFFD")
                     with st.expander(f"{e['icone']} {e['label']}", expanded=False):
+                        pergunta_ag = e["input"].get("pergunta", "—")
                         st.markdown(
-                            f"<div style='border-left:3px solid {cor};padding:8px 12px;"
-                            f"border-radius:0 6px 6px 0;background:#F8FAFC;"
-                            f"font-size:12px;color:#374151;margin-bottom:8px'>"
-                            f"<strong>Pergunta:</strong><br>{e['input'].get('pergunta','—')}</div>",
+                            f"<div style='border-left:2px solid {cor}40;padding:8px 12px;"
+                            f"border-radius:0 6px 6px 0;background:#0a0a0f;"
+                            f"font-size:12px;color:#3d5166;margin-bottom:10px'>"
+                            f"<strong style='color:#3d5166'>Pergunta:</strong><br>"
+                            f"<span style='color:#94a3b8'>{pergunta_ag}</span></div>",
                             unsafe_allow_html=True,
                         )
                         output = e.get("output", "")
-                        if isinstance(output, str):
+                        if isinstance(output, str) and output:
                             st.markdown(output)
-                        else:
+                        elif output:
                             st.json(output)
 
             n_ag  = len(agentes)
             n_dad = len(dados)
             st.markdown(
-                f"<p style='font-size:11px;color:#94A3B8;margin-top:12px'>"
+                f"<p style='font-size:11px;color:#3d5166;margin-top:12px'>"
                 f"{n_ag} especialista(s) · {n_dad} fonte(s)</p>",
                 unsafe_allow_html=True,
             )
