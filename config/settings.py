@@ -22,6 +22,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database/unbound_sales.db"
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
+# Autenticação do dashboard
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+
 # Modelo padrão Claude
 DEFAULT_MODEL = "claude-sonnet-4-6"
 

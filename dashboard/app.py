@@ -261,6 +261,43 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ─── AUTENTICAÇÃO ────────────────────────────────────────────────────────────
+
+def _tela_login():
+    col_l, col_c, col_r = st.columns([1, 1, 1])
+    with col_c:
+        st.markdown(
+            """
+            <div style='text-align:center;padding:48px 0 32px'>
+              <div style='display:inline-flex;width:64px;height:64px;background:#FEF2F2;
+                          border-radius:18px;align-items:center;justify-content:center;
+                          font-size:32px;border:1px solid #FECACA;margin-bottom:20px'>🔐</div>
+              <h1 style='font-size:26px;font-weight:900;color:#0F172A;margin:0 0 6px;
+                         letter-spacing:-0.5px'>
+                Unbound<span style='color:#E53935'>Sales</span>
+              </h1>
+              <p style='color:#64748B;font-size:14px;margin:0'>Acesso restrito</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.form("form_login"):
+            senha = st.text_input("Senha", type="password", placeholder="••••••••")
+            entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+        if entrar:
+            import hashlib
+            from config.settings import APP_PASSWORD
+            esperado = APP_PASSWORD or ""
+            if senha == esperado:
+                st.session_state["_auth"] = True
+                st.rerun()
+            else:
+                st.error("Senha incorreta.")
+    st.stop()
+
+if not st.session_state.get("_auth", False):
+    _tela_login()
+
 # ─── INICIALIZAÇÃO ─────────────────────────────────────────────────────────────
 
 criar_tabelas()
@@ -324,30 +361,30 @@ if cliente is None and st.session_state.get("page", "overview") not in _PAGINAS_
 page = st.session_state.get("page", "overview")
 
 if page == "overview":
-    from dashboard.pages.pg_overview import render
+    from dashboard.views.pg_overview import render
 elif page == "team":
-    from dashboard.pages.pg_team import render
+    from dashboard.views.pg_team import render
 elif page == "market":
-    from dashboard.pages.pg_market import render
+    from dashboard.views.pg_market import render
 elif page == "copywriter":
-    from dashboard.pages.pg_copywriter import render
+    from dashboard.views.pg_copywriter import render
 elif page == "expert":
-    from dashboard.pages.pg_expert import render
+    from dashboard.views.pg_expert import render
 elif page == "landing":
-    from dashboard.pages.pg_landing import render
+    from dashboard.views.pg_landing import render
 elif page == "leads":
-    from dashboard.pages.pg_leads import render
+    from dashboard.views.pg_leads import render
 elif page == "social":
-    from dashboard.pages.pg_social import render
+    from dashboard.views.pg_social import render
 elif page == "designer":
-    from dashboard.pages.pg_designer import render
+    from dashboard.views.pg_designer import render
 elif page == "consulta":
-    from dashboard.pages.pg_consulta import render
+    from dashboard.views.pg_consulta import render
 elif page == "director":
-    from dashboard.pages.pg_director import render
+    from dashboard.views.pg_director import render
 elif page == "clientes":
-    from dashboard.pages.pg_clientes import render
+    from dashboard.views.pg_clientes import render
 else:
-    from dashboard.pages.pg_overview import render
+    from dashboard.views.pg_overview import render
 
 render(cliente)
