@@ -146,10 +146,11 @@ def _extrair_tool_calls(stop_reason) -> list[dict]:
 
 # ─── EXECUÇÃO VIA MANAGED AGENTS ─────────────────────────────────────────────
 
-def _chamar_managed(agent_id: str, mensagem: str) -> str:
+def _chamar_managed(agent_id: str, mensagem: str, on_text=None, on_tool=None) -> str:
     """
     Cria sessão efêmera, envia mensagem e retorna resposta completa do agente.
-    Suporta tool use: quando o agente chama uma ferramenta, executa e retorna resultado.
+    on_text(texto_acumulado): chamado cada vez que novo texto chega (para streaming na UI).
+    on_tool(etapa, name, dados): "start" ou "done" quando uma ferramenta é executada.
     """
     session = client.beta.sessions.create(
         agent=agent_id,
@@ -170,6 +171,8 @@ def _chamar_managed(agent_id: str, mensagem: str) -> str:
                 for block in event.content:
                     if block.type == "text":
                         texto += block.text
+                        if on_text:
+                            on_text(texto)
 
             elif event.type == "session.status_terminated":
                 break
@@ -185,7 +188,11 @@ def _chamar_managed(agent_id: str, mensagem: str) -> str:
 
                     resultados = []
                     for tc in tool_calls:
+                        if on_tool:
+                            on_tool("start", tc["name"], tc["input"])
                         resultado_str = _executar_tool_agent(tc["name"], tc["input"])
+                        if on_tool:
+                            on_tool("done", tc["name"], resultado_str)
                         resultados.append({
                             "type": "tool_result",
                             "tool_use_id": tc["tool_use_id"],
@@ -196,7 +203,6 @@ def _chamar_managed(agent_id: str, mensagem: str) -> str:
                         session_id=session.id,
                         events=resultados,
                     )
-                    # Continua no loop — o agente processará e emitirá mais eventos
                 else:
                     break
 
@@ -218,7 +224,8 @@ def _chamar_direto(system_prompt: str, mensagem: str) -> str:
 
 # ─── INTERFACE PRINCIPAL ──────────────────────────────────────────────────────
 
-def chamar_agente(agent_key: str, mensagem: str, cliente_id: int = None) -> str:
+def chamar_agente(agent_key: str, mensagem: str, cliente_id: int = None,
+                  on_text=None, on_tool=None) -> str:
     """
     Chama um agente pelo key e retorna a resposta como texto.
     agent_key: "lucas" | "pedro" | "rodrigo" | "ana" | "moderador" | "social"
@@ -241,10 +248,23 @@ def chamar_agente(agent_key: str, mensagem: str, cliente_id: int = None) -> str:
                 f"ID do agente {agent_key} não configurado no .env. "
                 "Execute agents/setup_agents.py."
             )
-        return _chamar_managed(agent_id, mensagem_completa)
+        return _chamar_managed(agent_id, mensagem_completa, on_text=on_text, on_tool=on_tool)
 
     elif agente["tipo"] == "direto" and agent_key == "social":
         from agents.social_agent import SYSTEM_PROMPT
+        if on_text:
+            # Streaming via messages.stream for direct agents
+            with client.messages.stream(
+                model=DEFAULT_MODEL,
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": mensagem_completa}],
+            ) as stream:
+                accumulated = ""
+                for chunk in stream.text_stream:
+                    accumulated += chunk
+                    on_text(accumulated)
+            return accumulated
         return _chamar_direto(SYSTEM_PROMPT, mensagem_completa)
 
     raise ValueError(f"Tipo de agente '{agente['tipo']}' não suportado.")
@@ -254,16 +274,22 @@ def consultar_agentes(
     agent_keys: list[str],
     mensagem: str,
     callback=None,
+    on_text=None,
 ) -> list[dict]:
     """
     Chama múltiplos agentes em sequência com a mesma mensagem.
-    callback(agent_key, label, texto) é chamado após cada resposta.
-    Retorna lista de dicts: [{agent_key, label, cor, texto}]
+    callback(agent_key, label, texto) é chamado após cada resposta completa.
+    on_text(agent_key, texto_acumulado) é chamado para streaming em tempo real.
     """
     resultados = []
     for key in agent_keys:
         agente = AGENTES[key]
-        texto = chamar_agente(key, mensagem)
+
+        def _on_text(t, k=key):
+            if on_text:
+                on_text(k, t)
+
+        texto = chamar_agente(key, mensagem, on_text=_on_text if on_text else None)
         resultados.append({
             "agent_key": key,
             "label": agente["label"],

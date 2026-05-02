@@ -301,45 +301,72 @@ _LABEL = {
 def rodar_diretor(
     pedido: str,
     progress_cb=None,
+    text_stream_cb=None,
+    mensagens_anteriores: list = None,
     max_turns: int = 20,
 ) -> dict:
     """
     Executa o loop do Diretor até produzir o parecer final.
 
-    progress_cb(etapa, tool_name, info) para atualizar UI:
-      etapa: "inicio" | "tool_start" | "tool_done" | "fim"
-      tool_name: nome da ferramenta
-      info: dict com detalhes
+    progress_cb(etapa, tool_name, info):
+      etapa: "inicio" | "director_text" | "tool_start" | "tool_done" | "fim"
 
-    Retorna dict:
-      parecer_final: str
-      etapas: list[dict] — log de cada ferramenta chamada
+    text_stream_cb(token):
+      Chamado com cada token do texto do Diretor em tempo real (streaming).
+
+    mensagens_anteriores: lista de mensagens de uma sessão anterior para continuação.
     """
-    mensagens = [{"role": "user", "content": pedido}]
+    if mensagens_anteriores:
+        mensagens = list(mensagens_anteriores)
+        mensagens.append({"role": "user", "content": pedido})
+    else:
+        mensagens = [{"role": "user", "content": pedido}]
+
     etapas = []
 
     if progress_cb:
         progress_cb("inicio", "", {"pedido": pedido})
 
     for _ in range(max_turns):
-        resposta = client.messages.create(
-            model=DEFAULT_MODEL,
-            max_tokens=8192,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=mensagens,
+        if text_stream_cb:
+            # Streaming do texto do Diretor em tempo real
+            with client.messages.stream(
+                model=DEFAULT_MODEL,
+                max_tokens=8192,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=mensagens,
+            ) as stream:
+                for token in stream.text_stream:
+                    text_stream_cb(token)
+                resposta = stream.get_final_message()
+        else:
+            resposta = client.messages.create(
+                model=DEFAULT_MODEL,
+                max_tokens=8192,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=mensagens,
+            )
+
+        # Texto que o Diretor escreveu antes de chamar ferramentas
+        pre_text = "".join(
+            b.text for b in resposta.content
+            if hasattr(b, "text") and b.text
         )
 
         if resposta.stop_reason == "end_turn":
-            parecer = "".join(
-                b.text for b in resposta.content if hasattr(b, "text") and b.text
-            )
             if progress_cb:
-                progress_cb("fim", "", {"parecer": parecer})
-            return {"parecer_final": parecer, "etapas": etapas}
+                progress_cb("fim", "", {"parecer": pre_text})
+            mensagens.append({"role": "assistant", "content": resposta.content})
+            return {"parecer_final": pre_text, "etapas": etapas, "mensagens": mensagens}
 
         if resposta.stop_reason != "tool_use":
             break
+
+        # Emite o texto de raciocínio do Diretor (antes dos tool calls)
+        if pre_text and progress_cb and not text_stream_cb:
+            progress_cb("director_text", "", {"text": pre_text})
 
         mensagens.append({"role": "assistant", "content": resposta.content})
 
@@ -381,4 +408,4 @@ def rodar_diretor(
 
         mensagens.append({"role": "user", "content": resultados_tools})
 
-    return {"parecer_final": "Sessão encerrada sem conclusão.", "etapas": etapas}
+    return {"parecer_final": "Sessão encerrada sem conclusão.", "etapas": etapas, "mensagens": mensagens}
