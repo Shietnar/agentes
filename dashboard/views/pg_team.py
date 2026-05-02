@@ -169,10 +169,31 @@ def render(cliente):
     with tab_sintese:
         _card_contribuicao("📋 Moderador — Plano Final", sintese, "sintese")
 
-        st.download_button(
+        col_pdf, col_txt = st.columns(2)
+        nome_cli = cliente.nome if cliente else "cliente"
+        try:
+            from tools.pdf_exporter import gerar_pdf_relatorio_agente
+            resultado = st.session_state.get("team_resultado", {})
+            linhas = []
+            for c in contribuicoes:
+                linhas.append(f"## {c['agente']}\n{c['texto']}")
+            linhas.append(f"## Plano Final\n{sintese}")
+            conteudo_md = "\n\n".join(linhas)
+            pdf_bytes = gerar_pdf_relatorio_agente("Reunião de Time", conteudo_md, nome_cli)
+            col_pdf.download_button(
+                "📄 Exportar PDF",
+                data=pdf_bytes,
+                file_name=f"reuniao_{nome_cli.lower().replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True,
+            )
+        except Exception:
+            pass
+        col_txt.download_button(
             "⬇️ Baixar Plano Final (.txt)",
             data=sintese,
-            file_name=f"plano_{(cliente.nome if cliente else 'cliente').replace(' ','_')}.txt",
+            file_name=f"plano_{nome_cli.replace(' ','_')}.txt",
             mime="text/plain",
             use_container_width=True,
         )

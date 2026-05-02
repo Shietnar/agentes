@@ -98,6 +98,7 @@ def _render_analise_manual(cliente):
                         taxa_engajamento=taxa_eng,
                         briefing=briefing,
                     )
+                    resultado["_cliente_nome"] = cliente.nome
                     st.session_state["social_resultado"] = resultado
                 except Exception as e:
                     st.error(f"Erro na análise: {e}")
@@ -140,6 +141,7 @@ def _render_analise_api(cliente):
                     dados_instagram=dados,
                     briefing="",
                 )
+                resultado["_cliente_nome"] = cliente.nome
                 st.session_state["social_resultado"] = resultado
             except Exception as e:
                 st.error(f"Erro na análise: {e}")
@@ -240,6 +242,36 @@ def _exibir_resultado(r: dict):
     if hashtags:
         st.markdown("**🏷️ Hashtags Recomendadas:**")
         st.code(" ".join(hashtags))
+
+    st.divider()
+    try:
+        from tools.pdf_exporter import gerar_pdf_relatorio_agente
+        linhas = [f"# Análise de Mídias Sociais\n\n**Score Geral:** {r.get('score_geral', 0)}/100\n\n{r.get('resumo_executivo', '')}"]
+        saude = r.get("saude_perfil", {})
+        if saude.get("pontos_fortes"):
+            linhas.append("## Pontos Fortes\n" + "\n".join(f"- {p}" for p in saude["pontos_fortes"]))
+        if saude.get("pontos_fracos"):
+            linhas.append("## Pontos a Melhorar\n" + "\n".join(f"- {p}" for p in saude["pontos_fracos"]))
+        for op in r.get("oportunidades", []):
+            linhas.append(f"## Oportunidade: {op.get('titulo','')}\n{op.get('descricao','')}")
+        plano = r.get("plano_acao", {})
+        if plano.get("esta_semana"):
+            linhas.append("## Plano — Esta Semana\n" + "\n".join(f"- {a}" for a in plano["esta_semana"]))
+        if plano.get("este_mes"):
+            linhas.append("## Plano — Este Mês\n" + "\n".join(f"- {a}" for a in plano["este_mes"]))
+        conteudo_md = "\n\n".join(linhas)
+        nome_cli = r.get("_cliente_nome", "Cliente")
+        pdf_bytes = gerar_pdf_relatorio_agente("Análise de Mídias Sociais", conteudo_md, nome_cli)
+        st.download_button(
+            "📄 Exportar PDF",
+            data=pdf_bytes,
+            file_name=f"social_{nome_cli.lower().replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            type="primary",
+            use_container_width=False,
+        )
+    except Exception:
+        pass
 
 
 # ─── CONEXÃO API ─────────────────────────────────────────────────────────────

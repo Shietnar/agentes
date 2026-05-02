@@ -148,6 +148,28 @@ def _render_wordpress_tab(cliente):
         for rec in r.get("recomendacoes_priorizadas", []):
             st.markdown(f"• {rec}")
 
+    try:
+        from tools.pdf_exporter import gerar_pdf_relatorio_agente
+        linhas = [
+            f"# Análise de Landing Page\n\n**Score:** {r.get('score_percentual', 0)}/100  |  **Nota:** {r.get('nota_geral', '?')}\n\n{r.get('resumo_executivo', '')}",
+            "## Problemas Críticos\n" + "\n".join(f"- {p}" for p in r.get("problemas_criticos", [])),
+            "## Recomendações\n" + "\n".join(f"- {rec}" for rec in r.get("recomendacoes_priorizadas", [])),
+        ]
+        for bloco in r.get("analise_detalhada", []):
+            titulo = bloco.get("elemento", bloco.get("titulo", ""))
+            linhas.append(f"## {titulo}\n{bloco.get('analise', bloco.get('descricao', ''))}")
+        conteudo_md = "\n\n".join(linhas)
+        pdf_bytes = gerar_pdf_relatorio_agente("Análise de Landing Page", conteudo_md, cliente.nome)
+        st.download_button(
+            "📄 Exportar PDF",
+            data=pdf_bytes,
+            file_name=f"lp_{cliente.nome.lower().replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            type="primary",
+        )
+    except Exception:
+        pass
+
     # ── Gerar HTML melhorado ───────────────────────────────────────────────────
     st.divider()
     st.subheader("🛠️ Gerar versão melhorada")
