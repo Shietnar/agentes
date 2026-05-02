@@ -79,8 +79,9 @@ def card(content: str, padding: str = "20px 24px", extra_style: str = "") -> str
 def stat_card(label: str, value: str, color_key: str = "cyan",
               icon: str = "", subtitle: str = "") -> str:
     c = COLORS.get(color_key, COLORS["cyan"])
+    c_text = c["text"]
     sub = (
-        f"<div style='font-size:11px;color:{c[\"text\"]};margin-top:4px;opacity:0.75'>{subtitle}</div>"
+        f"<div style='font-size:11px;color:{c_text};margin-top:4px;opacity:0.75'>{subtitle}</div>"
         if subtitle else ""
     )
     ico = f"<div style='font-size:20px;margin-bottom:8px'>{icon}</div>" if icon else ""
@@ -113,10 +114,11 @@ def pipeline_card(label: str, value: int, color: str) -> str:
 
 def badge(text: str, color_key: str = "gray", size: str = "sm") -> str:
     c = COLORS.get(color_key, COLORS["gray"])
+    c_bg, c_text, c_border = c["bg"], c["text"], c["border"]
     pad = "2px 8px" if size == "sm" else "4px 12px"
     fs  = "10px" if size == "sm" else "12px"
     return (
-        f"<span style='background:{c[\"bg\"]};color:{c[\"text\"]};border:1px solid {c[\"border\"]};"
+        f"<span style='background:{c_bg};color:{c_text};border:1px solid {c_border};"
         f"padding:{pad};border-radius:99px;font-size:{fs};font-weight:700;"
         f"letter-spacing:0.4px;text-transform:uppercase;white-space:nowrap'>{text}</span>"
     )
