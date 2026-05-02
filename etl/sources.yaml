@@ -1,0 +1,133 @@
+# ETL Sources — UnboundSales Knowledge Base
+# Cada fonte tem: tipo (youtube|web), url/id/query, agente alvo, tópico, idioma
+# type "search" usa busca por query no YouTube (mais robusto que IDs de canal)
+
+agents:
+  pedro:
+    description: "Especialista Google Ads — foco em Pedro Sobral e Google Ads para serviços locais"
+    youtube:
+      - type: "search"
+        query: "Pedro Sobral Google Ads estratégia campanhas"
+        max_videos: 10
+        topico: "pedro_sobral_estrategia"
+        idioma: pt-BR
+      - type: "search"
+        query: "Pedro Sobral Google Ads lances automáticos tCPA tROAS"
+        max_videos: 8
+        topico: "pedro_sobral_lances"
+        idioma: pt-BR
+      - type: "search"
+        query: "Google Ads serviços locais Brasil desentupidora chaveiro"
+        max_videos: 8
+        topico: "google_ads_servicos_locais"
+        idioma: pt-BR
+    web:
+      - url: "https://mastertools.com.br/blog/"
+        tipo: "blog_index"
+        topico: "mastertools_blog"
+        max_articles: 15
+        idioma: pt-BR
+      - url: "https://support.google.com/google-ads/answer/2497976"
+        topico: "quality_score_oficial"
+        idioma: pt-BR
+      - url: "https://support.google.com/google-ads/answer/9738914"
+        topico: "rsa_oficial"
+        idioma: en
+
+  rodrigo:
+    description: "Copywriter — foco em copy brasileira, RSA e psicologia de urgência"
+    youtube:
+      - type: "search"
+        query: "copywriting persuasão urgência Brasil conversão"
+        max_videos: 8
+        topico: "copy_urgencia_brasil"
+        idioma: pt-BR
+      - type: "search"
+        query: "headline copywriting anúncios Google Ads texto persuasivo"
+        max_videos: 8
+        topico: "headlines_anuncios"
+        idioma: pt-BR
+    web:
+      - url: "https://www.copyhackers.com/blog/"
+        tipo: "blog_index"
+        topico: "copyhackers"
+        max_articles: 10
+        idioma: en
+      - url: "https://conversion-rate-experts.com/persuasion-landing-pages/"
+        topico: "persuasion_techniques"
+        idioma: en
+
+  ana:
+    description: "CRO e Landing Pages — CXL, Unbounce, otimização para emergência"
+    youtube:
+      - type: "search"
+        query: "CRO conversion rate optimization landing page Brazil"
+        max_videos: 8
+        topico: "cro_tecnicas_video"
+        idioma: en
+      - type: "search"
+        query: "landing page otimização conversão Google Ads Brasil"
+        max_videos: 6
+        topico: "landing_page_brasil"
+        idioma: pt-BR
+    web:
+      - url: "https://cxl.com/blog/landing-page-optimization/"
+        topico: "cxl_lp_optimization"
+        idioma: en
+      - url: "https://unbounce.com/conversion-benchmark-report/"
+        topico: "unbounce_benchmarks"
+        idioma: en
+
+  lucas:
+    description: "Estratégia de negócio — mercado brasileiro, posicionamento, crescimento"
+    youtube:
+      - type: "search"
+        query: "estratégia de negócio serviços locais crescimento MPE Brasil"
+        max_videos: 8
+        topico: "estrategia_negocio_brasil"
+        idioma: pt-BR
+      - type: "search"
+        query: "precificação serviços como cobrar mais caro posicionamento"
+        max_videos: 6
+        topico: "precificacao_estrategia"
+        idioma: pt-BR
+    web:
+      - url: "https://blog.sebrae-sc.com.br/"
+        tipo: "blog_index"
+        topico: "sebrae_estrategia"
+        max_articles: 8
+        idioma: pt-BR
+      - url: "https://exame.com/pme/"
+        tipo: "blog_index"
+        topico: "pme_brasil"
+        max_articles: 5
+        idioma: pt-BR
+
+  social:
+    description: "Mídias sociais — Instagram, TikTok, conteúdo para serviços locais"
+    youtube:
+      - type: "search"
+        query: "Instagram para empresas locais serviços Reels estratégia"
+        max_videos: 8
+        topico: "instagram_local_business"
+        idioma: pt-BR
+      - type: "search"
+        query: "algoritmo Instagram 2024 2025 engajamento conteúdo"
+        max_videos: 6
+        topico: "algoritmo_instagram_video"
+        idioma: pt-BR
+    web:
+      - url: "https://later.com/blog/instagram-algorithm/"
+        topico: "instagram_algorithm"
+        idioma: en
+      - url: "https://blog.hootsuite.com/instagram-engagement/"
+        topico: "instagram_engagement"
+        idioma: en
+
+# Configurações globais do ETL
+config:
+  output_dir: "agents/knowledge"
+  raw_cache_dir: ".etl_cache"
+  max_chars_per_file: 15000    # máximo de chars por arquivo de conhecimento gerado
+  model: "claude-sonnet-4-6"   # modelo usado para extração de knowledge
+  cache_ttl_days: 7            # reprocessar fontes após 7 dias

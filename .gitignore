@@ -43,3 +43,4 @@ logs/
 
 # Streamlit
 .streamlit/secrets.toml
+.etl_cache/

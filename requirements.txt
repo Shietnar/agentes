@@ -30,6 +30,11 @@ uvicorn>=0.30.0
 streamlit>=1.35.0
 plotly>=5.22.0
 
-# Web (landing page agent)
+# Web (landing page agent + ETL scraper)
 requests>=2.31.0
 beautifulsoup4>=4.12.0
+httpx>=0.27.0
+
+# ETL
+youtube-transcript-api>=0.6.0
+pyyaml>=6.0.0

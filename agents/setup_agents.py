@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import anthropic
 from config.settings import ANTHROPIC_API_KEY, DEFAULT_MODEL
+from agents.knowledge_loader import montar_system_prompt
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -447,13 +448,13 @@ AGENTES = [
     {
         "key": "LUCAS",
         "name": "UnboundSales — Lucas (Negócio)",
-        "system": _LUCAS_SYSTEM,
-        "tools": [],  # Análise por raciocínio puro
+        "system": montar_system_prompt(_LUCAS_SYSTEM, "lucas"),
+        "tools": [],
     },
     {
         "key": "PEDRO",
         "name": "UnboundSales — Pedro (Google Ads)",
-        "system": _PEDRO_SYSTEM,
+        "system": montar_system_prompt(_PEDRO_SYSTEM, "pedro"),
         "tools": [
             {
                 "type": "custom",
@@ -478,13 +479,13 @@ AGENTES = [
     {
         "key": "RODRIGO",
         "name": "UnboundSales — Rodrigo (Copywriter)",
-        "system": _RODRIGO_SYSTEM,
-        "tools": [],  # Copywriting por raciocínio puro
+        "system": montar_system_prompt(_RODRIGO_SYSTEM, "rodrigo"),
+        "tools": [],
     },
     {
         "key": "ANA",
         "name": "UnboundSales — Ana (Landing Pages)",
-        "system": _ANA_SYSTEM,
+        "system": montar_system_prompt(_ANA_SYSTEM, "ana"),
         "tools": [
             {
                 "type": "custom",
@@ -506,8 +507,8 @@ AGENTES = [
     {
         "key": "MODERADOR",
         "name": "UnboundSales — Moderador (Síntese)",
-        "system": _MODERADOR_SYSTEM,
-        "tools": [],  # Síntese por raciocínio puro
+        "system": montar_system_prompt(_MODERADOR_SYSTEM, "moderador"),
+        "tools": [],
     },
 ]
 
