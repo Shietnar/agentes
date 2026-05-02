@@ -365,7 +365,7 @@ criar_tabelas()
 cliente = render_sidebar()
 
 # Páginas que funcionam sem cliente selecionado
-_PAGINAS_SEM_CLIENTE = {"consulta", "director"}
+_PAGINAS_SEM_CLIENTE = {"consulta", "director", "knowledge"}
 
 if cliente is None and st.session_state.get("page", "overview") not in _PAGINAS_SEM_CLIENTE:
     # Tela de boas-vindas quando não há cliente
@@ -445,6 +445,8 @@ elif page == "director":
     from dashboard.views.pg_director import render
 elif page == "clientes":
     from dashboard.views.pg_clientes import render
+elif page == "knowledge":
+    from dashboard.views.pg_knowledge import render
 else:
     from dashboard.views.pg_overview import render
 

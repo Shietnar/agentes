@@ -101,6 +101,14 @@ def render_sidebar():
         _nav_btn("👥  Leads",                "leads",      pagina_atual)
         _nav_btn("⚙️  Clientes",             "clientes",   pagina_atual)
 
+        # ── Sistema ───────────────────────────────────────────────────────────
+        st.markdown(
+            "<p style='font-size:10px;font-weight:700;text-transform:uppercase;"
+            "letter-spacing:1.2px;color:#334155;padding:14px 4px 6px'>Sistema</p>",
+            unsafe_allow_html=True,
+        )
+        _nav_btn("🧠  Treinar Agentes", "knowledge", pagina_atual)
+
         # ── Cliente ativo (rodapé) ────────────────────────────────────────────
         if cliente_selecionado:
             seg = cliente_selecionado.segmento or ""

@@ -84,6 +84,23 @@ class Conversa(Base):
     lead = relationship("Lead", back_populates="conversas")
 
 
+class FonteConhecimento(Base):
+    """Fontes de conhecimento adicionadas pelo usuário para cada agente"""
+    __tablename__ = "fontes_conhecimento"
+
+    id = Column(Integer, primary_key=True)
+    agent_key = Column(String(50), nullable=False)   # pedro, rodrigo, ana, lucas, social
+    tipo = Column(String(30))                         # youtube_video, web_article, pdf, youtube_playlist
+    url = Column(Text)                                # URL ou nome do arquivo
+    topico = Column(String(100))                      # nome definido pelo usuário
+    status = Column(String(20), default="pendente")   # pendente, ok, erro
+    md_gerado = Column(Text)                          # markdown extraído pelo Claude
+    chars_extraidos = Column(Integer, default=0)
+    erro_msg = Column(Text)
+    criado_em = Column(DateTime, default=datetime.now)
+    processado_em = Column(DateTime)
+
+
 def criar_tabelas():
     Base.metadata.create_all(engine)
     print("Banco de dados criado com sucesso.")
