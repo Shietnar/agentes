@@ -287,6 +287,117 @@ def chamar_agente(agent_key: str, mensagem: str, cliente_id: int = None,
     raise ValueError(f"Tipo de agente '{agente['tipo']}' não suportado.")
 
 
+def debater_agentes(
+    agent_keys: list[str],
+    mensagem: str,
+    on_r1_text=None,
+    on_r1_done=None,
+    on_r2_text=None,
+    on_r2_done=None,
+    on_sintese_text=None,
+    on_sintese_done=None,
+    on_tool=None,
+) -> dict:
+    """
+    Debate em 3 etapas:
+      Rodada 1 — cada agente responde de forma independente
+      Rodada 2 — cada agente lê as respostas dos colegas e debate/complementa
+      Síntese   — o Moderador consolida tudo num parecer integrado
+
+    Callbacks:
+      on_r1_text(agent_key, texto_acumulado)
+      on_r1_done(agent_key, texto)
+      on_r2_text(agent_key, texto_acumulado)
+      on_r2_done(agent_key, texto)
+      on_sintese_text(texto_acumulado)
+      on_sintese_done(texto)
+      on_tool(agent_key, etapa, name, dados)
+    """
+    # ── Rodada 1 ──────────────────────────────────────────────────────────────
+    prompt_r1 = (
+        "RODADA 1 — Análise Inicial Independente\n\n"
+        f"{mensagem}\n\n"
+        "Dê seu diagnóstico completo na sua área de especialidade. "
+        "Seja direto e específico."
+    )
+
+    respostas_r1: dict[str, str] = {}
+    for key in agent_keys:
+        def _ot(t, k=key):
+            if on_r1_text:
+                on_r1_text(k, t)
+        def _tool(etapa, name, dados, k=key):
+            if on_tool:
+                on_tool(k, etapa, name, dados)
+
+        texto = chamar_agente(key, prompt_r1, on_text=_ot, on_tool=_tool)
+        respostas_r1[key] = texto
+        if on_r1_done:
+            on_r1_done(key, texto)
+
+    # ── Rodada 2 ──────────────────────────────────────────────────────────────
+    respostas_r2: dict[str, str] = {}
+    for key in agent_keys:
+        outros_txt = "\n\n".join(
+            f"**{AGENTES[k]['label']}:**\n{v}"
+            for k, v in respostas_r1.items() if k != key
+        )
+        prompt_r2 = (
+            "RODADA 2 — Debate com seus Colegas\n\n"
+            f"PERGUNTA ORIGINAL:\n{mensagem}\n\n"
+            f"SUA ANÁLISE DA RODADA 1:\n{respostas_r1[key]}\n\n"
+            f"O QUE SEUS COLEGAS DISSERAM:\n{outros_txt}\n\n"
+            "Agora debata diretamente com seus colegas:\n"
+            "• Você concorda com o diagnóstico deles?\n"
+            "• Há algum ponto que discorda ou quer aprofundar?\n"
+            "• O que a análise deles muda ou complementa na sua visão?\n"
+            "• Existe alguma interdependência entre as áreas que precisa ser resolvida junto?\n"
+            "Seja direto — cite o colega pelo nome quando concordar ou discordar."
+        )
+
+        def _ot2(t, k=key):
+            if on_r2_text:
+                on_r2_text(k, t)
+        def _tool2(etapa, name, dados, k=key):
+            if on_tool:
+                on_tool(k, etapa, name, dados)
+
+        texto = chamar_agente(key, prompt_r2, on_text=_ot2, on_tool=_tool2)
+        respostas_r2[key] = texto
+        if on_r2_done:
+            on_r2_done(key, texto)
+
+    # ── Síntese do Diretor ────────────────────────────────────────────────────
+    r1_fmt = "\n\n".join(f"**{AGENTES[k]['label']}:**\n{v}" for k, v in respostas_r1.items())
+    r2_fmt = "\n\n".join(f"**{AGENTES[k]['label']}:**\n{v}" for k, v in respostas_r2.items())
+
+    prompt_sintese = (
+        "SÍNTESE FINAL — Parecer do Diretor\n\n"
+        f"PERGUNTA ORIGINAL:\n{mensagem}\n\n"
+        f"=== RODADA 1 — Análises Iniciais ===\n{r1_fmt}\n\n"
+        f"=== RODADA 2 — Debate ===\n{r2_fmt}\n\n"
+        "Com base em todo o debate acima, produza um parecer final integrado:\n"
+        "1. Consensos — o que o time concorda como prioridade\n"
+        "2. Divergências relevantes — onde as visões diferem e qual prevalece\n"
+        "3. Plano de ação integrado — as ações concretas em ordem de prioridade, "
+        "conectando as contribuições de cada área\n\n"
+        "Seja decisivo. Este é o parecer final que guia a execução."
+    )
+
+    def _ot_s(t):
+        if on_sintese_text:
+            on_sintese_text(t)
+    def _tool_s(etapa, name, dados):
+        if on_tool:
+            on_tool("moderador", etapa, name, dados)
+
+    sintese = chamar_agente("moderador", prompt_sintese, on_text=_ot_s, on_tool=_tool_s)
+    if on_sintese_done:
+        on_sintese_done(sintese)
+
+    return {"r1": respostas_r1, "r2": respostas_r2, "sintese": sintese}
+
+
 def consultar_agentes(
     agent_keys: list[str],
     mensagem: str,
