@@ -16,6 +16,9 @@ def detectar_tipo(url: str) -> str:
         return 'youtube_video'
     if 'instagram.com' in url_lower:
         return 'instagram'
+    from etl.extractors.course_video import eh_plataforma_curso
+    if eh_plataforma_curso(url):
+        return 'course_video'
     return 'web_article'
 
 
@@ -25,10 +28,12 @@ def processar_url(
     topico: str,
     on_status: callable = None,
     model: str = "claude-sonnet-4-6",
+    cookies_file: Optional[str] = None,
 ) -> dict:
     """
     Processa uma URL e retorna dict com {md, tipo, chars, erro}.
     on_status(mensagem) é chamado com atualizações de progresso.
+    cookies_file: caminho para arquivo Netscape cookies.txt (vídeos de curso).
     """
     def _status(msg):
         if on_status:
@@ -43,6 +48,8 @@ def processar_url(
             return _processar_youtube_playlist(url, agent_key, topico, _status, model)
         elif tipo == 'instagram':
             return _processar_instagram(url, agent_key, topico, _status, model)
+        elif tipo == 'course_video':
+            return _processar_course_video(url, agent_key, topico, _status, model, cookies_file)
         else:
             return _processar_web(url, agent_key, topico, _status, model)
     except Exception as e:
@@ -171,3 +178,29 @@ def _processar_instagram(url, agent_key, topico, status_cb, model):
     # Instagram bloqueia scraping — trata como artigo web genérico
     status_cb("Tentando extrair conteúdo do Instagram...")
     return _processar_web(url, agent_key, topico, status_cb, model)
+
+
+def _processar_course_video(url, agent_key, topico, status_cb, model, cookies_file=None):
+    from etl.extractors.course_video import baixar_e_transcrever
+    resultado_dl = baixar_e_transcrever(url, cookies_file=cookies_file, on_status=status_cb)
+    if resultado_dl.get("erro"):
+        return {"md": None, "tipo": "course_video", "chars": 0, "erro": resultado_dl["erro"]}
+
+    texto = resultado_dl["texto"]
+    titulo = resultado_dl.get("titulo", topico)
+    duracao = resultado_dl.get("duracao_min", 0)
+    fonte_info = f"yt-dlp/{resultado_dl.get('fonte','?')} | duração {duracao:.0f} min"
+
+    status_cb(f"Transcrição obtida ({len(texto):,} chars). Processando com Claude...")
+    from etl.processors.knowledge_extractor import extrair_conhecimento
+    md = extrair_conhecimento(
+        texto=texto,
+        agente=agent_key,
+        topico=topico,
+        fonte=f"{url} [{fonte_info}]",
+        titulo=titulo,
+        model=model,
+    )
+    if not md:
+        return {"md": None, "tipo": "course_video", "chars": 0, "erro": "Claude não encontrou conteúdo relevante"}
+    return {"md": md, "tipo": "course_video", "chars": len(md), "erro": None}

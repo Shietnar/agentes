@@ -30,6 +30,7 @@ _TIPO_ICON = {
     "web_article":      "🌐",
     "pdf":              "📄",
     "instagram":        "📸",
+    "course_video":     "🎓",
     "manual":           "✍️",
 }
 
@@ -204,9 +205,9 @@ def _render_agent_tab(agent_key: str, info: dict):
         unsafe_allow_html=True,
     )
 
-    col_form, col_pdf = st.columns([3, 2])
+    tab_url, tab_curso, tab_pdf = st.tabs(["🌐 URL (YouTube / Artigo)", "🎓 Vídeo de Curso (acesso pago)", "📄 PDF"])
 
-    with col_form:
+    with tab_url:
         with st.form(f"form_url_{agent_key}", clear_on_submit=True):
             url_input = st.text_input(
                 "URL da fonte",
@@ -226,7 +227,10 @@ def _render_agent_tab(agent_key: str, info: dict):
             else:
                 _processar_e_salvar_url(agent_key, url_input, topico_input)
 
-    with col_pdf:
+    with tab_curso:
+        _render_curso_tab(agent_key)
+
+    with tab_pdf:
         pdf_file = st.file_uploader(
             "Upload de PDF",
             type=["pdf"],
@@ -352,7 +356,134 @@ def _render_agent_tab(agent_key: str, info: dict):
         )
 
 
+# ─── CURSO TAB ────────────────────────────────────────────────────────────────
+
+def _render_curso_tab(agent_key: str):
+    """Aba para importar vídeos de plataformas de cursos pagos."""
+    st.markdown(
+        """
+        <div style='background:rgba(0,207,253,0.06);border:1px solid rgba(0,207,253,0.2);
+        border-radius:8px;padding:12px 16px;margin-bottom:16px'>
+        <div style='font-size:13px;font-weight:700;color:#00CFFD;margin-bottom:4px'>
+        🎓 Importar vídeo de curso pago (Subido, Hotmart, Kiwify...)</div>
+        <div style='font-size:12px;color:#64748b'>
+        Cole o link do vídeo e faça upload do seu arquivo de cookies para autenticar.
+        O sistema baixa o áudio, transcreve com Whisper e extrai o conhecimento com Claude.
+        </div></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("ℹ️ Como exportar cookies do browser", expanded=False):
+        st.markdown("""
+**Chrome / Edge:**
+1. Instale a extensão **"Get cookies.txt LOCALLY"** (Chrome Web Store)
+2. Acesse o curso e faça login
+3. Clique na extensão e selecione **"Export"** → salva `cookies.txt`
+
+**Firefox:**
+1. Instale **"cookies.txt"** (addons.mozilla.org)
+2. Acesse o curso logado → clique na extensão → **"Current Site"** → Download
+
+O arquivo exportado é no formato Netscape (`.txt`). Ele contém sua sessão autenticada — não compartilhe com ninguém.
+        """)
+
+    with st.form(f"form_curso_{agent_key}", clear_on_submit=True):
+        url_curso = st.text_input(
+            "Link do vídeo do curso",
+            placeholder="https://subido.com.br/cst/.../aula/...",
+        )
+        topico_curso = st.text_input(
+            "Nome do tópico",
+            placeholder="ex: Estrutura de campanhas Pedro Sobral",
+        )
+        cookies_upload = st.file_uploader(
+            "Arquivo cookies.txt (autenticação)",
+            type=["txt"],
+            help="Exporte os cookies do seu browser enquanto está logado no curso.",
+        )
+        submit_curso = st.form_submit_button(
+            "🎓 Baixar e Transcrever Vídeo", type="primary", use_container_width=True
+        )
+
+    if submit_curso:
+        if not url_curso or not topico_curso:
+            st.warning("Preencha o link e o nome do tópico.")
+        elif not cookies_upload:
+            st.warning("Faça upload do arquivo cookies.txt para autenticar no curso.")
+        else:
+            _processar_e_salvar_curso(agent_key, url_curso, topico_curso, cookies_upload)
+
+
 # ─── AÇÕES ────────────────────────────────────────────────────────────────────
+
+def _processar_e_salvar_curso(agent_key: str, url: str, topico: str, cookies_file_upload):
+    """Processa um vídeo de curso com autenticação via cookies."""
+    import tempfile
+    from etl.processar_fonte import processar_url
+
+    cookies_bytes = cookies_file_upload.read()
+    mensagens = []
+
+    def on_status(msg):
+        mensagens.append(msg)
+
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".txt", delete=False) as tmp:
+        tmp.write(cookies_bytes)
+        cookies_path = tmp.name
+
+    try:
+        with st.status("Baixando e transcrevendo vídeo de curso...", expanded=True) as status_widget:
+            resultado = processar_url(
+                url=url,
+                agent_key=agent_key,
+                topico=topico,
+                on_status=on_status,
+                cookies_file=cookies_path,
+            )
+            for msg in mensagens:
+                st.write(msg)
+
+            if resultado["erro"]:
+                status_widget.update(label="Erro ao processar", state="error")
+                _salvar_fonte_db(
+                    agent_key=agent_key,
+                    tipo="course_video",
+                    url=url,
+                    topico=topico,
+                    status="erro",
+                    md_gerado=None,
+                    chars=0,
+                    erro_msg=resultado["erro"],
+                )
+                st.error(resultado["erro"])
+            else:
+                _salvar_md_disk(agent_key, topico, resultado["md"])
+                _salvar_fonte_db(
+                    agent_key=agent_key,
+                    tipo="course_video",
+                    url=url,
+                    topico=topico,
+                    status="ok",
+                    md_gerado=resultado["md"],
+                    chars=resultado["chars"],
+                    erro_msg=None,
+                )
+                chars = resultado["chars"]
+                status_widget.update(
+                    label=f"Concluído! {chars:,} chars extraídos",
+                    state="complete",
+                )
+                st.success(f"Vídeo de curso processado: {chars:,} chars sobre '{topico}'")
+    finally:
+        import os as _os
+        try:
+            _os.unlink(cookies_path)
+        except Exception:
+            pass
+
+    st.rerun()
+
 
 def _processar_e_salvar_url(agent_key: str, url: str, topico: str):
     """Processa uma URL, salva no banco e em disco."""
