@@ -159,7 +159,19 @@ def render(cliente):
         st.divider()
 
         # ── Exportar ─────────────────────────────────────────────────────────
-        col_a, col_b = st.columns(2)
+        col_pdf, col_a, col_b = st.columns(3)
+        try:
+            from tools.pdf_exporter import gerar_pdf_copy
+            pdf_bytes = gerar_pdf_copy(r, cliente.nome, segmento)
+            col_pdf.download_button(
+                "📄 Exportar PDF",
+                data=pdf_bytes,
+                file_name=f"rsa_{cliente.nome.lower().replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                type="primary",
+            )
+        except Exception as e:
+            col_pdf.error(f"PDF: {e}")
         col_a.download_button(
             "⬇️ Exportar JSON",
             data=json.dumps(r, ensure_ascii=False, indent=2),

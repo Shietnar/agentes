@@ -260,8 +260,31 @@ def render(cliente=None):
 
     # ── Chat input para follow-up (sessão ativa) ───────────────────────────────
     else:
-        col_btn, col_info = st.columns([1, 3])
+        col_btn, col_pdf, col_info = st.columns([1, 1, 2])
         col_btn.markdown("<br>", unsafe_allow_html=True)
+        col_pdf.markdown("<br>", unsafe_allow_html=True)
+
+        # Exportar PDF da reunião
+        hist = st.session_state.get("dir_historico", [])
+        if hist:
+            conteudo_md = "\n\n".join(
+                f"**{'Pedido' if h['tipo'] == 'user' else 'Diretor'}:** {h['texto']}"
+                for h in hist if h.get("texto")
+            )
+            nome_cli = cliente.nome if cliente else "Cliente"
+            try:
+                from tools.pdf_exporter import gerar_pdf_relatorio_agente
+                pdf_bytes = gerar_pdf_relatorio_agente("Reuniao de Diretor", conteudo_md, nome_cli)
+                col_pdf.download_button(
+                    "📄 Exportar PDF",
+                    data=pdf_bytes,
+                    file_name=f"reuniao_{nome_cli.lower().replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            except Exception:
+                pass
+
         if col_btn.button("🔄 Nova reunião", use_container_width=True):
             for k in ["dir_mensagens_api", "dir_historico"]:
                 st.session_state.pop(k, None)

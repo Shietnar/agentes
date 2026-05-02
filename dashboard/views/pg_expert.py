@@ -230,76 +230,132 @@ def render(cliente):
 
     st.divider()
 
-    # ── Recomendações com checkboxes ───────────────────────────────────────────
-    st.subheader("🔧 Recomendações — selecione as que deseja aplicar")
-
     recomendacoes = analise.get("recomendacoes", [])
-    selecionadas = []
 
+    # Separa aplicáveis das informativas
+    aplicaveis = [r for r in recomendacoes if r.get("acao") and r["acao"] != "informativo"]
+    informativas = [r for r in recomendacoes if not r.get("acao") or r["acao"] == "informativo"]
+
+    # ── Ajustes aplicáveis via API ─────────────────────────────────────────────
+    if aplicaveis:
+        st.markdown(
+            """<div style='background:rgba(0,207,253,0.06);border:1px solid rgba(0,207,253,0.25);
+            border-radius:10px;padding:14px 18px;margin-bottom:16px'>
+            <div style='font-size:13px;font-weight:700;color:#00CFFD;margin-bottom:4px'>
+            ✅ Ajustes prontos para aplicar na conta Google Ads</div>
+            <div style='font-size:12px;color:#64748b'>Selecione os ajustes abaixo e clique em
+            "Aplicar aprovados". As alterações são publicadas em tempo real na sua conta.</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    selecionadas = []
     for rec in recomendacoes:
         cor, icone = _PRI_CONFIG.get(rec.get("prioridade", ""), ("#888", "⚪"))
         pode_aplicar = rec.get("acao") and rec["acao"] != "informativo"
+        params = rec.get("parametros", {})
 
-        with st.container():
-            col_check, col_info = st.columns([0.07, 0.93])
+        with st.container(border=True):
+            col_check, col_info = st.columns([0.06, 0.94])
             with col_check:
                 checked = st.checkbox(
                     "",
-                    key=f"rec_{rec.get('id', rec['titulo'][:20])}",
+                    key=f"rec_{rec.get('id', rec.get('titulo','')[:20])}",
                     disabled=not pode_aplicar,
+                    value=False,
                 )
             with col_info:
                 st.markdown(
-                    f"{_badge(rec.get('prioridade',''))} "
-                    f"**{rec['titulo']}**",
+                    f"{_badge(rec.get('prioridade',''))} **{rec.get('titulo','')}**",
                     unsafe_allow_html=True,
                 )
-                st.caption(f"_{rec.get('justificativa','')}_ • {rec.get('impacto_esperado','')}")
-                if not pode_aplicar:
-                    st.caption("ℹ️ Recomendação informativa — aplicação manual necessária")
+                st.caption(rec.get("justificativa", ""))
+
+                col_imp, col_acao = st.columns(2)
+                impacto = rec.get("impacto_esperado", "")
+                if impacto:
+                    col_imp.markdown(
+                        f"<span style='font-size:11px;color:#22c55e'>↑ {impacto}</span>",
+                        unsafe_allow_html=True,
+                    )
+
+                if pode_aplicar and params:
+                    import json as _json
+                    params_txt = _json.dumps(params, ensure_ascii=False)
+                    col_acao.markdown(
+                        f"<span style='font-size:11px;color:#f59e0b'>"
+                        f"API: {rec['acao']}</span>",
+                        unsafe_allow_html=True,
+                    )
+                elif not pode_aplicar:
+                    col_acao.markdown(
+                        "<span style='font-size:11px;color:#475569'>"
+                        "ℹ️ Aplicação manual</span>",
+                        unsafe_allow_html=True,
+                    )
 
             if checked and pode_aplicar:
                 selecionadas.append(rec)
 
     st.divider()
 
-    col_btn, col_info = st.columns([1, 2])
-    aplicar = col_btn.button(
-        f"✅ Aplicar {len(selecionadas)} melhoria(s)",
-        type="primary",
-        disabled=len(selecionadas) == 0,
-        use_container_width=True,
-    )
-    col_info.caption(
-        "As melhorias são aplicadas diretamente na conta Google Ads. "
-        "Campanhas são modificadas em tempo real."
-    )
+    col_btn, col_pdf, col_nova = st.columns([2, 1, 1])
 
+    # ── Botão aplicar ──────────────────────────────────────────────────────────
+    n_sel = len(selecionadas)
+    if aplicaveis:
+        aplicar = col_btn.button(
+            f"🚀 Aplicar {n_sel} ajuste(s) aprovado(s)" if n_sel else "Nenhum ajuste selecionado",
+            type="primary",
+            disabled=n_sel == 0,
+            use_container_width=True,
+        )
+        if n_sel == 0:
+            col_btn.caption("Selecione pelo menos um ajuste acima para aplicar.")
+    else:
+        aplicar = False
+        col_btn.info("Todas as recomendações desta análise são informativas (aplicação manual).")
+
+    # ── Exportar PDF ───────────────────────────────────────────────────────────
+    try:
+        from tools.pdf_exporter import gerar_pdf_google_ads
+        pdf_bytes = gerar_pdf_google_ads(analise, dados, cliente.nome)
+        col_pdf.download_button(
+            "📄 Exportar PDF",
+            data=pdf_bytes,
+            file_name=f"ads_{cliente.nome.lower().replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    except Exception:
+        pass
+
+    if col_nova.button("🔄 Nova análise", use_container_width=True):
+        for key in ["expert_dados", "expert_analise", "expert_phase"]:
+            st.session_state.pop(key, None)
+        st.rerun()
+
+    # ── Executar aplicação ─────────────────────────────────────────────────────
     if aplicar and selecionadas:
         from agents.expert_agent import aplicar_melhorias
         from google.ads.googleads.errors import GoogleAdsException
 
-        with st.spinner("Aplicando melhorias na API do Google Ads..."):
+        st.markdown("---")
+        st.subheader("📋 Aplicando ajustes na conta...")
+
+        with st.spinner("Publicando alterações via Google Ads API..."):
             try:
                 resultados = aplicar_melhorias(customer_id, selecionadas)
             except GoogleAdsException as e:
-                st.error(f"Erro API: {e.failure.errors[0].message}")
-                return
+                st.error(f"Erro Google Ads API: {e.failure.errors[0].message}")
+                st.stop()
             except Exception as e:
                 st.error(f"Erro: {e}")
-                return
+                st.stop()
 
-        st.subheader("📋 Resultado das Aplicações")
         for res in resultados:
             if res["sucesso"]:
-                st.success(f"✅ {res['titulo']}")
+                st.success(f"✅ Aplicado: {res['titulo']}")
             else:
                 erro = res.get("resultado", {}).get("erro", "Erro desconhecido")
-                st.error(f"❌ {res['titulo']}: {erro}")
-
-    # ── Botão de nova análise ──────────────────────────────────────────────────
-    st.divider()
-    if st.button("🔄 Nova análise", use_container_width=False):
-        for key in ["expert_dados", "expert_analise", "expert_phase"]:
-            st.session_state.pop(key, None)
-        st.rerun()
+                st.error(f"❌ Falhou: {res['titulo']} — {erro}")

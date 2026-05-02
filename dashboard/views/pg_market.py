@@ -150,11 +150,24 @@ def render(cliente):
                 for acao in pa.get(key, []):
                     st.markdown(f"• {acao}")
 
-        # ── Download JSON ────────────────────────────────────────────────────
+        # ── Exportar ─────────────────────────────────────────────────────────
         import json
         st.divider()
-        st.download_button(
-            "⬇️ Baixar Análise (JSON)",
+        col_pdf, col_json = st.columns(2)
+        try:
+            from tools.pdf_exporter import gerar_pdf_estrategia
+            pdf_bytes = gerar_pdf_estrategia(r, cliente.nome, segmento)
+            col_pdf.download_button(
+                "📄 Exportar Relatório PDF",
+                data=pdf_bytes,
+                file_name=f"estrategia_{cliente.nome.lower().replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                type="primary",
+            )
+        except Exception as e:
+            col_pdf.error(f"Erro ao gerar PDF: {e}")
+        col_json.download_button(
+            "⬇️ Exportar JSON",
             data=json.dumps(r, ensure_ascii=False, indent=2),
             file_name=f"estrategia_{cliente.nome.lower().replace(' ', '_')}.json",
             mime="application/json",
