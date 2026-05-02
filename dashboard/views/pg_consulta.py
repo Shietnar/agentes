@@ -209,56 +209,123 @@ def _render_instagram():
 
 # ─── ABA: GOOGLE ADS ─────────────────────────────────────────────────────────
 
-def _render_google_ads():
+@st.cache_data(ttl=300, show_spinner=False)
+def _carregar_contas_mcc():
     from config.settings import GOOGLE_ADS_LOGIN_CUSTOMER_ID
+    from tools.google_ads import listar_contas_mcc
+    mcc_id = (GOOGLE_ADS_LOGIN_CUSTOMER_ID or "").replace("-", "").strip()
+    if not mcc_id:
+        return []
+    return listar_contas_mcc(mcc_id)
 
-    st.markdown("#### Contas / Campanhas para analisar")
-    st.caption(
-        "Adicione uma ou mais contas. Com múltiplas, Pedro fará análise comparativa. "
-        "Você pode aplicar alterações com confirmação individual."
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _carregar_campanhas_conta(customer_id: str):
+    from tools.google_ads import listar_campanhas
+    return listar_campanhas(customer_id)
+
+
+def _render_google_ads():
+    st.markdown(
+        "<p style='font-size:10px;font-weight:700;text-transform:uppercase;"
+        "letter-spacing:1px;color:#3d5166;margin-bottom:4px'>Selecionar contas e campanhas</p>",
+        unsafe_allow_html=True,
     )
 
-    # ── Gerenciar lista de contas ─────────────────────────────────────────────
-    if "ads_contas" not in st.session_state:
-        st.session_state["ads_contas"] = [
-            {"customer_id": GOOGLE_ADS_LOGIN_CUSTOMER_ID or "", "campaign_id": "", "label": "", "dias": 30}
-        ]
+    # ── Carregar contas da MCC ────────────────────────────────────────────────
+    if "ads_contas_mcc" not in st.session_state:
+        with st.spinner("Carregando contas da MCC..."):
+            try:
+                st.session_state["ads_contas_mcc"] = _carregar_contas_mcc()
+            except Exception as e:
+                st.error(f"Erro ao acessar MCC: {e}")
+                st.session_state["ads_contas_mcc"] = []
 
-    contas = st.session_state["ads_contas"]
+    contas_mcc = st.session_state.get("ads_contas_mcc", [])
 
-    for i, conta in enumerate(contas):
-        with st.container(border=True):
-            col_label, col_remove = st.columns([4, 1])
-            with col_label:
-                label_txt = f"— {conta['label']}" if conta['label'] else ''
-                st.markdown(f"**Conta {i + 1}** {label_txt}")
-            with col_remove:
-                if len(contas) > 1 and st.button("✕", key=f"rm_conta_{i}", use_container_width=True):
-                    st.session_state["ads_contas"].pop(i)
-                    st.rerun()
+    if not contas_mcc:
+        st.warning("Nenhuma conta encontrada na MCC. Verifique as credenciais no `.env`.")
+        return
 
-            col_cid, col_camp, col_lbl, col_dias = st.columns([2, 2, 2, 1])
-            conta["customer_id"] = col_cid.text_input(
-                "Customer ID", value=conta["customer_id"], key=f"cid_{i}",
-                placeholder="8367385493",
-            )
-            conta["campaign_id"] = col_camp.text_input(
-                "Campaign ID", value=conta["campaign_id"], key=f"camp_{i}",
-                placeholder="12345678",
-            )
-            conta["label"] = col_lbl.text_input(
-                "Rótulo (opcional)", value=conta["label"], key=f"lbl_{i}",
-                placeholder="Ex: Cliente A",
-            )
-            conta["dias"] = col_dias.selectbox(
-                "Período", [7, 14, 30], index=[7, 14, 30].index(conta["dias"]),
-                key=f"dias_{i}",
-            )
+    # ── Seleção de campanhas ──────────────────────────────────────────────────
+    if "ads_selecao" not in st.session_state:
+        st.session_state["ads_selecao"] = []  # [{"customer_id":..,"campaign_id":..,"label":..,"dias":..}]
 
-    if st.button("➕ Adicionar outra conta", key="add_conta"):
-        st.session_state["ads_contas"].append(
-            {"customer_id": "", "campaign_id": "", "label": "", "dias": 30}
+    col_conta, col_camp, col_dias, col_add = st.columns([3, 3, 1, 1])
+
+    conta_opcoes  = {f"{c['nome']} ({c['id']})": c for c in contas_mcc}
+    conta_labels  = list(conta_opcoes.keys())
+    conta_label_sel = col_conta.selectbox("Conta", conta_labels, key="ads_sel_conta")
+    conta_sel = conta_opcoes[conta_label_sel]
+
+    # Carrega campanhas da conta selecionada
+    campanhas = []
+    with st.spinner(""):
+        try:
+            campanhas = _carregar_campanhas_conta(conta_sel["id"])
+        except Exception as e:
+            st.error(f"Erro ao carregar campanhas: {e}")
+
+    camp_ativas = [c for c in campanhas if c["status"] == "ENABLED"]
+    camp_opcoes = {
+        f"{c['nome']} — R${c['orcamento_diario_brl']:.0f}/dia ({c['cliques']} cliques)": c
+        for c in camp_ativas
+    } if camp_ativas else {}
+
+    if camp_opcoes:
+        camp_sel_label = col_camp.selectbox("Campanha", list(camp_opcoes.keys()), key="ads_sel_camp")
+        camp_sel = camp_opcoes[camp_sel_label]
+    else:
+        col_camp.selectbox("Campanha", ["Nenhuma campanha ativa"], key="ads_sel_camp", disabled=True)
+        camp_sel = None
+
+    dias_sel = col_dias.selectbox("Período", [7, 14, 30], index=2, key="ads_sel_dias")
+
+    col_add.markdown("<br>", unsafe_allow_html=True)
+    if col_add.button("＋ Incluir", use_container_width=True, key="ads_add_btn",
+                      disabled=camp_sel is None):
+        nova = {
+            "customer_id": conta_sel["id"],
+            "campaign_id": camp_sel["id"],
+            "label": f"{conta_sel['nome']} › {camp_sel['nome']}",
+            "dias": dias_sel,
+        }
+        # Evita duplicatas
+        existentes = [(c["customer_id"], c["campaign_id"]) for c in st.session_state["ads_selecao"]]
+        if (nova["customer_id"], nova["campaign_id"]) not in existentes:
+            st.session_state["ads_selecao"].append(nova)
+            st.rerun()
+
+    # ── Lista de campanhas selecionadas ───────────────────────────────────────
+    selecao = st.session_state["ads_selecao"]
+
+    if selecao:
+        st.markdown(
+            f"<p style='font-size:10px;font-weight:700;text-transform:uppercase;"
+            f"letter-spacing:1px;color:#3d5166;margin:14px 0 6px'>"
+            f"Para analisar — {len(selecao)} campanha(s)</p>",
+            unsafe_allow_html=True,
         )
+        for i, item in enumerate(selecao):
+            col_info, col_rm = st.columns([5, 1])
+            col_info.markdown(
+                f"<div style='padding:8px 12px;background:#0f1117;"
+                f"border:1px solid rgba(0,207,253,0.15);border-radius:8px;"
+                f"font-size:13px;color:#94a3b8'>"
+                f"<span style='color:#00CFFD;font-weight:600'>{item['label']}</span>"
+                f" &nbsp;·&nbsp; {item['dias']} dias</div>",
+                unsafe_allow_html=True,
+            )
+            if col_rm.button("✕", key=f"rm_sel_{i}", use_container_width=True):
+                st.session_state["ads_selecao"].pop(i)
+                st.rerun()
+    else:
+        st.caption("Selecione uma conta e campanha acima e clique em ＋ Incluir.")
+
+    if st.button("↺  Recarregar contas", key="ads_reload", use_container_width=False):
+        _carregar_contas_mcc.clear()
+        _carregar_campanhas_conta.clear()
+        st.session_state.pop("ads_contas_mcc", None)
         st.rerun()
 
     st.divider()
@@ -270,7 +337,7 @@ def _render_google_ads():
     col_ag, col_q = st.columns([1, 2])
     with col_ag:
         sel_labels = st.multiselect(
-            "Agentes que analisam:",
+            "Agentes:",
             options=[AGENTES[k]["label"] for k in todos_keys],
             default=[AGENTES["pedro"]["label"], AGENTES["lucas"]["label"]],
             key="ads_agentes",
@@ -282,8 +349,8 @@ def _render_google_ads():
             key="ads_pergunta",
             placeholder=(
                 "Ex: Onde está o maior desperdício de budget?\n"
-                "Ex: Compare o CPA das duas contas e diga qual está mais eficiente\n"
-                "Ex: Quais keywords devem ser pausadas imediatamente?"
+                "Ex: Quais keywords devem ser pausadas imediatamente?\n"
+                "Ex: Como reduzir o CPA sem perder volume de conversões?"
             ),
         )
 
@@ -300,24 +367,21 @@ def _render_google_ads():
         type="primary",
         use_container_width=True,
         key="ads_analisar",
+        disabled=not selecao,
     )
     limpar = col_btn2.button("🔄 Nova análise", use_container_width=True, key="ads_limpar")
 
     if limpar:
-        for k in ["ads_resultado", "ads_dados_raw", "ads_recomendacoes"]:
+        for k in ["ads_resultado", "ads_dados_raw", "ads_recomendacoes", "ads_selecao"]:
             st.session_state.pop(k, None)
         st.rerun()
 
     if iniciar:
         agentes_keys = [label_para_key[l] for l in sel_labels if l in label_para_key]
-        contas_validas = [c for c in contas if c["customer_id"].strip() and c["campaign_id"].strip()]
-
-        if not contas_validas:
-            st.error("Informe pelo menos uma conta com Customer ID e Campaign ID.")
-        elif not agentes_keys:
+        if not agentes_keys:
             st.error("Selecione pelo menos um agente.")
         else:
-            _executar_ads(contas_validas, agentes_keys, pergunta_ads, modo_analise)
+            _executar_ads(selecao, agentes_keys, pergunta_ads, modo_analise)
 
     # ── Exibição dos resultados ───────────────────────────────────────────────
     if "ads_resultado" in st.session_state:

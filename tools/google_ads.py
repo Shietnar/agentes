@@ -26,6 +26,38 @@ def _conectar() -> GoogleAdsClient:
 
 # ─── RELATÓRIOS ────────────────────────────────────────────────────────────────
 
+def listar_contas_mcc(manager_customer_id: str) -> list:
+    """
+    Lista todas as contas de cliente (nível 1) acessíveis a partir da MCC.
+    Retorna apenas contas ENABLED, ordenadas por nome.
+    """
+    client = _conectar()
+    ga_service = client.get_service("GoogleAdsService")
+
+    query = """
+        SELECT
+            customer_client.client_customer,
+            customer_client.descriptive_name,
+            customer_client.currency_code,
+            customer_client.status
+        FROM customer_client
+        WHERE customer_client.level = 1
+    """
+
+    contas = []
+    for row in ga_service.search(customer_id=manager_customer_id, query=query):
+        cid = row.customer_client.client_customer.split("/")[-1]
+        nome = row.customer_client.descriptive_name or f"Conta {cid}"
+        status = row.customer_client.status.name
+        contas.append({
+            "id": cid,
+            "nome": nome,
+            "moeda": row.customer_client.currency_code,
+            "status": status,
+        })
+    return sorted([c for c in contas if c["status"] == "ENABLED"], key=lambda x: x["nome"])
+
+
 def listar_campanhas(customer_id: str) -> list:
     """
     Lista todas as campanhas não removidas com métricas dos últimos 30 dias.
@@ -92,7 +124,6 @@ def obter_metricas_campanha(customer_id: str, campaign_id: str, dias: int = 30) 
             metrics.average_cpc,
             metrics.cost_micros,
             metrics.conversions,
-            metrics.conversion_rate,
             metrics.search_impression_share,
             metrics.search_top_impression_share
         FROM campaign
@@ -104,19 +135,21 @@ def obter_metricas_campanha(customer_id: str, campaign_id: str, dias: int = 30) 
     for row in response:
         custo = row.metrics.cost_micros / 1_000_000
         conversoes = row.metrics.conversions
+        cliques = row.metrics.clicks
         cpa = custo / conversoes if conversoes > 0 else 0.0
+        cvr = (conversoes / cliques * 100) if cliques > 0 else 0.0
         return {
             "id": str(row.campaign.id),
             "nome": row.campaign.name,
             "status": row.campaign.status.name,
             "periodo_dias": dias,
             "impressoes": row.metrics.impressions,
-            "cliques": row.metrics.clicks,
+            "cliques": cliques,
             "ctr_pct": round(row.metrics.ctr * 100, 2),
             "cpc_medio_brl": round(row.metrics.average_cpc / 1_000_000, 2),
             "custo_total_brl": round(custo, 2),
             "conversoes": conversoes,
-            "taxa_conversao_pct": round(row.metrics.conversion_rate * 100, 2),
+            "taxa_conversao_pct": round(cvr, 2),
             "cpa_brl": round(cpa, 2),
             "parcela_impressoes_busca_pct": round(
                 row.metrics.search_impression_share * 100, 2
@@ -305,8 +338,7 @@ def obter_dados_grupos(customer_id: str, campaign_id: str, dias: int = 30) -> li
             metrics.ctr,
             metrics.average_cpc,
             metrics.cost_micros,
-            metrics.conversions,
-            metrics.conversion_rate
+            metrics.conversions
         FROM ad_group
         WHERE campaign.id = {campaign_id}
           AND segments.date DURING {periodo}
@@ -318,18 +350,20 @@ def obter_dados_grupos(customer_id: str, campaign_id: str, dias: int = 30) -> li
     for row in ga_service.search(customer_id=customer_id, query=query):
         custo = row.metrics.cost_micros / 1_000_000
         conv = row.metrics.conversions
+        clicks = row.metrics.clicks
+        cvr = (conv / clicks * 100) if clicks > 0 else 0.0
         grupos.append({
             "id": str(row.ad_group.id),
             "nome": row.ad_group.name,
             "status": row.ad_group.status.name,
             "cpc_max_brl": round(row.ad_group.cpc_bid_micros / 1_000_000, 2),
             "impressoes": row.metrics.impressions,
-            "cliques": row.metrics.clicks,
+            "cliques": clicks,
             "ctr_pct": round(row.metrics.ctr * 100, 2),
             "cpc_medio_brl": round(row.metrics.average_cpc / 1_000_000, 2),
             "custo_total_brl": round(custo, 2),
             "conversoes": conv,
-            "taxa_conversao_pct": round(row.metrics.conversion_rate * 100, 2),
+            "taxa_conversao_pct": round(cvr, 2),
             "cpa_brl": round(custo / conv, 2) if conv > 0 else None,
         })
     return grupos
@@ -516,8 +550,7 @@ def obter_performance_dispositivos(
             metrics.ctr,
             metrics.average_cpc,
             metrics.cost_micros,
-            metrics.conversions,
-            metrics.conversion_rate
+            metrics.conversions
         FROM campaign
         WHERE campaign.id = {campaign_id}
           AND segments.date DURING {periodo}
@@ -527,15 +560,17 @@ def obter_performance_dispositivos(
     for row in ga_service.search(customer_id=customer_id, query=query):
         custo = row.metrics.cost_micros / 1_000_000
         conv = row.metrics.conversions
+        clicks = row.metrics.clicks
+        cvr = (conv / clicks * 100) if clicks > 0 else 0.0
         dispositivos.append({
             "dispositivo": row.segments.device.name,
             "impressoes": row.metrics.impressions,
-            "cliques": row.metrics.clicks,
+            "cliques": clicks,
             "ctr_pct": round(row.metrics.ctr * 100, 2),
             "cpc_medio_brl": round(row.metrics.average_cpc / 1_000_000, 2),
             "custo_brl": round(custo, 2),
             "conversoes": conv,
-            "taxa_conversao_pct": round(row.metrics.conversion_rate * 100, 2),
+            "taxa_conversao_pct": round(cvr, 2),
             "cpa_brl": round(custo / conv, 2) if conv > 0 else None,
         })
     return sorted(dispositivos, key=lambda x: x["custo_brl"], reverse=True)

@@ -38,28 +38,62 @@ def render(cliente):
     finally:
         db.close()
 
-    with st.expander("⚙️ Configuração da campanha", expanded="expert_analise" not in st.session_state):
-        col1, col2 = st.columns([2, 1])
-        customer_id = col1.text_input(
-            "Customer ID",
-            value=GOOGLE_ADS_LOGIN_CUSTOMER_ID or "",
-            help="ID da conta Google Ads (sem traços)",
-        )
+    with st.expander("⚙️ Selecionar campanha", expanded="expert_analise" not in st.session_state):
+        # Carrega contas do MCC
+        @st.cache_data(ttl=300, show_spinner=False)
+        def _contas_mcc_expert():
+            from tools.google_ads import listar_contas_mcc
+            mcc_id = (GOOGLE_ADS_LOGIN_CUSTOMER_ID or "").replace("-", "").strip()
+            return listar_contas_mcc(mcc_id) if mcc_id else []
 
-        if campanhas_db:
-            opcoes = {f"{c.nome} ({c.google_ads_id})": c.google_ads_id for c in campanhas_db}
-            opcoes["Outro..."] = ""
-            sel = col2.selectbox("Campanha", list(opcoes.keys()))
-            campaign_id = opcoes[sel] if opcoes[sel] else col2.text_input("ID manual")
+        @st.cache_data(ttl=120, show_spinner=False)
+        def _camps_expert(cid):
+            from tools.google_ads import listar_campanhas
+            return listar_campanhas(cid)
+
+        contas_mcc = []
+        try:
+            with st.spinner("Carregando contas..."):
+                contas_mcc = _contas_mcc_expert()
+        except Exception as e:
+            st.error(f"Erro ao acessar MCC: {e}")
+
+        if contas_mcc:
+            conta_opcoes = {f"{c['nome']} ({c['id']})": c for c in contas_mcc}
+            col1, col2 = st.columns(2)
+            conta_sel_label = col1.selectbox("Conta Google Ads", list(conta_opcoes.keys()), key="expert_sel_conta")
+            conta_sel = conta_opcoes[conta_sel_label]
+            customer_id = conta_sel["id"]
+
+            campanhas_api = []
+            try:
+                campanhas_api = _camps_expert(customer_id)
+            except Exception:
+                pass
+
+            # Merge campanhas do banco + da API
+            camp_api_ativas = [c for c in campanhas_api if c["status"] == "ENABLED"]
+            if camp_api_ativas:
+                camp_opts = {f"{c['nome']} — R${c['orcamento_diario_brl']:.0f}/dia": c["id"] for c in camp_api_ativas}
+                if campanhas_db:
+                    for c in campanhas_db:
+                        lbl = f"[DB] {c.nome} ({c.google_ads_id})"
+                        camp_opts[lbl] = c.google_ads_id
+                camp_label = col2.selectbox("Campanha", list(camp_opts.keys()), key="expert_sel_camp")
+                campaign_id = camp_opts[camp_label]
+            else:
+                campaign_id = col2.text_input("Campaign ID (manual)", placeholder="12345678", key="expert_camp_manual")
         else:
-            campaign_id = col2.text_input("Campaign ID", placeholder="Ex: 1234567890")
+            col1, col2 = st.columns(2)
+            customer_id = col1.text_input("Customer ID", value=GOOGLE_ADS_LOGIN_CUSTOMER_ID or "", key="expert_cid_manual")
+            campaign_id = col2.text_input("Campaign ID", placeholder="12345678", key="expert_camp_manual2")
 
         st.session_state["_expert_customer_id"] = customer_id
         st.session_state["_expert_campaign_id"] = campaign_id
 
         if st.button("🔍 Analisar Campanha", type="primary", use_container_width=True):
             if not customer_id or not campaign_id:
-                st.error("Preencha o Customer ID e o Campaign ID.")
+                st.error("Selecione ou informe uma conta e campanha.")
             else:
                 st.session_state["expert_phase"] = "coletando"
                 st.rerun()
