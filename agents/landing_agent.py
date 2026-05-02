@@ -254,6 +254,48 @@ def gerar_landing_page_html(
     return html
 
 
+SYSTEM_WP_MELHORIA = """Você é o Agente Especialista em Landing Pages e WordPress da UnboundSales.
+Você recebeu o HTML atual de uma página WordPress e uma lista de problemas identificados.
+Sua tarefa é gerar um HTML COMPLETO e MELHORADO que resolve todos os problemas listados.
+
+REGRAS:
+• Mantenha a identidade visual existente (cores, logo, fontes) sempre que possível
+• Corrija todos os problemas críticos de conversão listados
+• Adicione elementos ausentes: botão tel:, WhatsApp flutuante, trust signals
+• HTML5 válido, standalone, mobile-first
+• Retorne APENAS o HTML, começando com <!DOCTYPE html>"""
+
+
+def melhorar_html_para_wordpress(html_atual: str, problemas: list, recomendacoes: list,
+                                  nome_empresa: str = "") -> str:
+    """
+    Recebe o HTML atual da página e os problemas identificados pela análise.
+    Retorna o HTML melhorado pronto para publicar no WordPress.
+    """
+    problemas_str = "\n".join(f"  - {p}" for p in problemas)
+    recomendacoes_str = "\n".join(f"  - {r}" for r in recomendacoes)
+
+    prompt = (
+        f"Empresa: {nome_empresa}\n\n"
+        f"PROBLEMAS CRÍTICOS IDENTIFICADOS:\n{problemas_str}\n\n"
+        f"RECOMENDAÇÕES DE MELHORIA:\n{recomendacoes_str}\n\n"
+        f"HTML ATUAL DA PÁGINA:\n{html_atual[:12000]}\n\n"
+        "Gere o HTML melhorado aplicando TODAS as correções listadas."
+    )
+
+    response = client.messages.create(
+        model=DEFAULT_MODEL,
+        max_tokens=8096,
+        system=SYSTEM_WP_MELHORIA,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    html = response.content[0].text.strip()
+    if not html.startswith("<!DOCTYPE html>") and "<!DOCTYPE html>" in html:
+        html = html[html.index("<!DOCTYPE html>"):]
+    return html
+
+
 if __name__ == "__main__":
     import sys
 
