@@ -149,15 +149,25 @@ def _extrair_tool_calls(stop_reason) -> list[dict]:
 def _chamar_managed(agent_id: str, mensagem: str, on_text=None, on_tool=None) -> str:
     """
     Cria sessão efêmera, envia mensagem e retorna resposta completa do agente.
-    on_text(texto_acumulado): chamado cada vez que novo texto chega (para streaming na UI).
-    on_tool(etapa, name, dados): "start" ou "done" quando uma ferramenta é executada.
+    on_text(texto_acumulado): chamado a cada novo token de texto.
+    on_tool(etapa, name, dados):
+        "connecting"  — sessão criada, aguardando primeiro evento
+        "start"       — ferramenta chamada pelo agente
+        "done"        — ferramenta retornou
+        "thinking"    — agente processando resultado da ferramenta
+        "text_start"  — agente começou a redigir resposta
     """
+    if on_tool:
+        on_tool("connecting", "", {})
+
     session = client.beta.sessions.create(
         agent=agent_id,
         environment_id=MANAGED_AGENTS_ENVIRONMENT_ID,
     )
 
     texto = ""
+    _primeira_mensagem = True
+
     with client.beta.sessions.events.stream(session_id=session.id) as stream:
         client.beta.sessions.events.send(
             session_id=session.id,
@@ -170,6 +180,9 @@ def _chamar_managed(agent_id: str, mensagem: str, on_text=None, on_tool=None) ->
             if event.type == "agent.message":
                 for block in event.content:
                     if block.type == "text":
+                        if _primeira_mensagem and on_tool:
+                            on_tool("text_start", "", {})
+                            _primeira_mensagem = False
                         texto += block.text
                         if on_text:
                             on_text(texto)
@@ -198,6 +211,10 @@ def _chamar_managed(agent_id: str, mensagem: str, on_text=None, on_tool=None) ->
                             "tool_use_id": tc["tool_use_id"],
                             "content": resultado_str,
                         })
+
+                    _primeira_mensagem = True  # próximo bloco de texto é novo
+                    if on_tool:
+                        on_tool("thinking", "", {})
 
                     client.beta.sessions.events.send(
                         session_id=session.id,
@@ -275,11 +292,13 @@ def consultar_agentes(
     mensagem: str,
     callback=None,
     on_text=None,
+    on_tool=None,
 ) -> list[dict]:
     """
     Chama múltiplos agentes em sequência com a mesma mensagem.
-    callback(agent_key, label, texto) é chamado após cada resposta completa.
-    on_text(agent_key, texto_acumulado) é chamado para streaming em tempo real.
+    callback(agent_key, label, texto): chamado após cada resposta completa.
+    on_text(agent_key, texto_acumulado): streaming token a token.
+    on_tool(agent_key, etapa, name, dados): eventos de ferramenta/status.
     """
     resultados = []
     for key in agent_keys:
@@ -289,7 +308,15 @@ def consultar_agentes(
             if on_text:
                 on_text(k, t)
 
-        texto = chamar_agente(key, mensagem, on_text=_on_text if on_text else None)
+        def _on_tool(etapa, name, dados, k=key):
+            if on_tool:
+                on_tool(k, etapa, name, dados)
+
+        texto = chamar_agente(
+            key, mensagem,
+            on_text=_on_text if on_text else None,
+            on_tool=_on_tool if on_tool else None,
+        )
         resultados.append({
             "agent_key": key,
             "label": agente["label"],

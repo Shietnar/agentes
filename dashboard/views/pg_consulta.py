@@ -1,12 +1,81 @@
 """Consulta Livre — chat em grupo com os especialistas em tempo real."""
+import time
 import streamlit as st
 import sys
 import os
-import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from agents.consulta import AGENTES
+
+
+# ─── Labels de ferramentas ────────────────────────────────────────────────────
+
+_TOOL_LABEL = {
+    "buscar_site":             ("🌐", "buscando site"),
+    "buscar_dados_campanha":   ("📊", "consultando Google Ads"),
+    "buscar_instagram":        ("📸", "coletando dados Instagram"),
+    "buscar_dados_google_ads": ("📊", "consultando Google Ads"),
+}
+
+
+# ─── Terminal de eventos ──────────────────────────────────────────────────────
+
+class Terminal:
+    """
+    Terminal ao vivo que mostra cada etapa da execução dos agentes.
+    Atualiza um st.empty() com um bloco de código monoespaçado.
+    """
+    def __init__(self, placeholder):
+        self._ph = placeholder
+        self._linhas: list[str] = []
+        self._t0 = time.time()
+        self._render()
+
+    def _ts(self) -> str:
+        return f"{time.time() - self._t0:5.1f}s"
+
+    def add(self, linha: str):
+        self._linhas.append(linha)
+        self._render()
+
+    def _render(self):
+        visivel = self._linhas[-40:] if self._linhas else ["  aguardando..."]
+        self._ph.code("\n".join(visivel), language=None)
+
+    # ── Callbacks de evento ───────────────────────────────────────────────────
+
+    def on_tool(self, agent_key: str, etapa: str, name: str, dados):
+        ag = AGENTES.get(agent_key, {})
+        nome = ag.get("label", agent_key).split("—")[-1].strip()
+
+        if etapa == "connecting":
+            self.add(f"  {self._ts()}  {nome}  →  abrindo sessão...")
+
+        elif etapa == "text_start":
+            self.add(f"  {self._ts()}  {nome}  →  ✏️  redigindo resposta...")
+
+        elif etapa == "thinking":
+            self.add(f"  {self._ts()}  {nome}  →  💭  processando dados recebidos...")
+
+        elif etapa == "start":
+            icone, label = _TOOL_LABEL.get(name, ("⚙️", name))
+            self.add(f"  {self._ts()}  {nome}  →  {icone}  {label}...")
+
+        elif etapa == "done":
+            chars = len(str(dados)) if dados else 0
+            icone, label = _TOOL_LABEL.get(name, ("⚙️", name))
+            self.add(f"  {self._ts()}  {nome}  →  ✓  {label}  ({chars:,} chars)")
+
+    def on_concluido(self, agent_key: str, texto: str):
+        ag = AGENTES.get(agent_key, {})
+        nome = ag.get("label", agent_key).split("—")[-1].strip()
+        palavras = len(texto.split())
+        self.add(f"  {self._ts()}  {nome}  →  ✓  concluído  ({palavras} palavras)")
+        self.add("")
+
+    def log_coleta(self, pct: float, label: str):
+        self.add(f"  {self._ts()}  📊  {label}  ({pct*100:.0f}%)")
 
 
 # ─── Helpers de chat ──────────────────────────────────────────────────────────
@@ -17,7 +86,6 @@ def _bubble_usuario(texto: str):
 
 
 def _bubble_agente_inicio(agent_key: str) -> st.empty:
-    """Cria chat bubble do agente e retorna placeholder para o texto."""
     ag = AGENTES.get(agent_key, {})
     label = ag.get("label", agent_key)
     icone = label.split(" ")[0]
@@ -50,42 +118,73 @@ def _exibir_historico(historico: list):
                 st.markdown(msg["texto"])
 
 
-# ─── Execução genérica com streaming ──────────────────────────────────────────
+# ─── Execução com streaming + terminal ────────────────────────────────────────
 
-def _executar_chat(agentes_keys: list, mensagem: str, chave: str):
-    """Chama agentes em sequência, exibindo cada resposta via streaming."""
+def _executar_chat(agentes_keys: list, mensagem: str, chave: str, terminal: "Terminal | None" = None):
+    """
+    Chama agentes em sequência com streaming de texto e eventos de ferramentas.
+    terminal: instância Terminal já criada (para reutilizar no fluxo de ads).
+    """
     from agents.consulta import consultar_agentes
 
-    _bubble_usuario(mensagem[:300] + ("..." if len(mensagem) > 300 else ""))
+    _bubble_usuario(mensagem[:400] + ("..." if len(mensagem) > 400 else ""))
 
+    # Cria bubbles antecipadamente
     placeholders: dict[str, st.empty] = {}
-
-    # Cria todos os bubbles antecipadamente (mostram "digitando...")
     for k in agentes_keys:
         ph = _bubble_agente_inicio(k)
-        ph.markdown("_digitando..._")
+        ph.markdown("_aguardando..._")
         placeholders[k] = ph
 
-    def on_text(agent_key: str, texto_acumulado: str):
+    # Terminal inline se não veio de fora
+    if terminal is None:
+        term_ph = st.empty()
+        terminal = Terminal(term_ph)
+
+    # ── Callbacks ────────────────────────────────────────────────────────────
+
+    def on_text(agent_key: str, texto: str):
         ph = placeholders.get(agent_key)
         if ph:
-            ph.markdown(texto_acumulado + "▌")
+            ph.markdown(texto + "▌")
+
+    def on_tool(agent_key: str, etapa: str, name: str, dados):
+        ph = placeholders.get(agent_key)
+        ag = AGENTES.get(agent_key, {})
+
+        # Atualiza bubble do agente com status visual
+        if ph:
+            if etapa == "connecting":
+                ph.markdown("_conectando..._")
+            elif etapa == "thinking":
+                ph.markdown("_processando dados..._")
+            elif etapa == "text_start":
+                ph.markdown("_redigindo..._")
+            elif etapa == "start":
+                _, label = _TOOL_LABEL.get(name, ("⚙️", name))
+                ph.markdown(f"_{label}..._")
+            # "done" não altera bubble (texto de streaming substituirá)
+
+        terminal.on_tool(agent_key, etapa, name, dados)
 
     def on_done(agent_key: str, label: str, texto: str):
         ph = placeholders.get(agent_key)
         if ph:
             ph.markdown(texto)
+        terminal.on_concluido(agent_key, texto)
 
+    # ── Execução ──────────────────────────────────────────────────────────────
     resultados = consultar_agentes(
         agentes_keys,
         mensagem,
         callback=on_done,
         on_text=on_text,
+        on_tool=on_tool,
     )
 
     # Salva histórico
     hist = st.session_state.get(f"{chave}_historico", [])
-    hist.append({"tipo": "user", "texto": mensagem[:300]})
+    hist.append({"tipo": "user", "texto": mensagem[:400]})
     for r in resultados:
         hist.append({"tipo": "agente", "agent_key": r["agent_key"], "texto": r["texto"]})
     st.session_state[f"{chave}_historico"] = hist
@@ -99,7 +198,7 @@ def render(cliente=None):
     st.markdown(
         "<h2 style='margin-bottom:4px'>💬 Consulta aos Especialistas</h2>"
         "<p style='color:#3d5166;font-size:13px;margin-bottom:16px'>"
-        "Converse com a equipe em tempo real — veja cada resposta aparecer enquanto é gerada.</p>",
+        "Converse com a equipe em tempo real — veja cada etapa no terminal ao vivo.</p>",
         unsafe_allow_html=True,
     )
 
@@ -127,25 +226,22 @@ def render(cliente=None):
 
 def _render_livre():
     chave = "livre"
-    todos_keys  = list(AGENTES.keys())
+    todos_keys   = list(AGENTES.keys())
     todos_labels = [AGENTES[k]["label"] for k in todos_keys]
     label_para_key = {AGENTES[k]["label"]: k for k in todos_keys}
 
-    # Área de chat
     chat_area = st.container()
     with chat_area:
         historico = st.session_state.get(f"{chave}_historico", [])
         _exibir_historico(historico)
 
-    # Controles
     if historico:
-        # Sessão ativa — mostra input de follow-up
         agentes_ativos = st.session_state.get(f"{chave}_agentes_ativos", todos_keys[:2])
         col_nova, col_info = st.columns([1, 3])
         col_nova.markdown("<br>", unsafe_allow_html=True)
         if col_nova.button("🔄 Nova conversa", key=f"nova_{chave}", use_container_width=True):
-            st.session_state.pop(f"{chave}_historico", None)
-            st.session_state.pop(f"{chave}_agentes_ativos", None)
+            for k in [f"{chave}_historico", f"{chave}_agentes_ativos"]:
+                st.session_state.pop(k, None)
             st.rerun()
         col_info.caption(
             f"Respondendo: {', '.join(AGENTES[k]['label'].split('—')[-1].strip() for k in agentes_ativos)}"
@@ -155,7 +251,6 @@ def _render_livre():
             with chat_area:
                 _executar_chat(agentes_ativos, followup.strip(), chave)
     else:
-        # Sessão nova — mostra formulário
         col_sel, col_btn = st.columns([3, 1])
         with col_sel:
             sel_labels = st.multiselect(
@@ -281,7 +376,7 @@ def _render_instagram():
     agentes = [label_para_key[l] for l in sel_labels if l in label_para_key]
 
     col1, col2 = st.columns(2)
-    handle  = col1.text_input("Handle do Instagram:", placeholder="@empresa", key=f"handle_{chave}")
+    handle   = col1.text_input("Handle do Instagram:", placeholder="@empresa", key=f"handle_{chave}")
     segmento = col2.text_input("Segmento:", placeholder="desentupidora, gasista...", key=f"seg_{chave}")
     info = st.text_area(
         "Informações adicionais:", height=60, key=f"info_{chave}",
@@ -338,7 +433,7 @@ def _render_google_ads():
         col1.markdown("<br>", unsafe_allow_html=True)
         if col1.button("🔄 Nova análise", key=f"nova_{chave}", use_container_width=True):
             for k in [f"{chave}_historico", f"{chave}_agentes_ativos",
-                      "ads_selecao", "ads_dados_raw"]:
+                      "ads_selecao", "ads_dados_raw", "ads_contexto_texto"]:
                 st.session_state.pop(k, None)
             st.rerun()
         followup = st.chat_input("Pergunta de acompanhamento sobre a campanha...", key=f"ci_{chave}")
@@ -433,7 +528,6 @@ def _render_google_ads():
 
     st.divider()
 
-    # ── Agentes e pergunta ────────────────────────────────────────────────────
     col_ag, col_q = st.columns([1, 2])
     with col_ag:
         sel_labels = st.multiselect(
@@ -473,7 +567,17 @@ def _render_google_ads():
 def _executar_ads_chat(contas, agentes_keys, pergunta, chat_area, chave):
     from agents.consulta import comparar_contas_ads, coletar_e_formatar_ads
 
-    barra = st.progress(0.0, text="Coletando dados da campanha...")
+    # Terminal unificado para coleta de dados + análise dos agentes
+    st.markdown(
+        "<p style='font-size:11px;font-weight:700;color:#3d5166;"
+        "text-transform:uppercase;letter-spacing:1px;margin-bottom:4px'>"
+        "🖥️ Terminal</p>",
+        unsafe_allow_html=True,
+    )
+    term_ph = st.empty()
+    terminal = Terminal(term_ph)
+    terminal.add(f"  {0.0:5.1f}s  Iniciando coleta de dados Google Ads...")
+
     todas_dados = []
     contexto_ads = ""
 
@@ -485,21 +589,25 @@ def _executar_ads_chat(contas, agentes_keys, pergunta, chat_area, chave):
                 campaign_id=conta["campaign_id"],
                 label=conta.get("label", ""),
                 dias=conta.get("dias", 30),
-                progress_cb=lambda p, l: barra.progress(p * 0.8, text=f"Coletando {l}..."),
+                progress_cb=lambda p, l: terminal.log_coleta(p, l),
             )
             todas_dados = [{"conta": conta, "dados": dados}]
         else:
             todas_dados, contexto_ads = comparar_contas_ads(
                 contas,
-                progress_cb=lambda p, l: barra.progress(p * 0.8, text=l),
+                progress_cb=lambda p, l: terminal.log_coleta(p, l),
             )
     except Exception as e:
-        barra.empty()
+        terminal.add(f"  ERRO na coleta: {e}")
         st.error(f"Erro ao coletar dados Google Ads: {e}")
         return
 
-    barra.empty()
-    st.session_state["ads_dados_raw"]    = todas_dados
+    terminal.add("")
+    metricas_count = len(str(contexto_ads))
+    terminal.add(f"  {terminal._ts()}  ✓  Dados coletados ({metricas_count:,} chars). Enviando para análise...")
+    terminal.add("")
+
+    st.session_state["ads_dados_raw"]     = todas_dados
     st.session_state["ads_contexto_texto"] = contexto_ads
 
     pergunta_final = pergunta or (
@@ -515,4 +623,4 @@ def _executar_ads_chat(contas, agentes_keys, pergunta, chat_area, chave):
     mensagem = f"TAREFA: {pergunta_final}\n\n{contexto_ads}"
 
     with chat_area:
-        _executar_chat(agentes_keys, mensagem, chave)
+        _executar_chat(agentes_keys, mensagem, chave, terminal=terminal)
